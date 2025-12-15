@@ -1,0 +1,279 @@
+# MEMPHIS WORKFORCE DASHBOARD - DAX FORMULAS FOR POWER BI
+
+## 🎯 CALCULATED COLUMNS
+
+### Performance Status Color
+```dax
+Performance Status = 
+SWITCH(
+    TRUE(),
+    [ComponentsProcessed] >= 70, "🟢 Excellent",
+    [ComponentsProcessed] >= 50, "🟡 Good", 
+    [ComponentsProcessed] >= 30, "🟡 Fair",
+    "🔴 Needs Attention"
+)
+```
+
+### Alert Type Classification
+```dax
+Alert Type = 
+SWITCH(
+    TRUE(),
+    [ComponentsProcessed] >= 70, "🟢 GREEN",
+    [ComponentsProcessed] >= 50, "🟡 YELLOW",
+    "🔴 RED"
+)
+```
+
+### Cross-Training Score
+```dax
+Cross Training Score = 
+IF(
+    ISBLANK([WorkstationsUsed]), 
+    0,
+    SWITCH(
+        TRUE(),
+        [WorkstationsUsed] >= 5, "🔵 Master",
+        [WorkstationsUsed] >= 3, "🔵 Expert", 
+        [WorkstationsUsed] >= 2, "🟢 Skilled",
+        "🟡 Specialist"
+    )
+)
+```
+
+## 📊 MEASURES
+
+### Total Active Operators
+```dax
+Total Active Operators = 
+DISTINCTCOUNT(Query1_OperatorPerformance[Operator])
+```
+
+### Total Components Today
+```dax
+Total Components Today = 
+SUM(Query1_OperatorPerformance[ComponentsProcessed])
+```
+
+### Average Efficiency Rate
+```dax
+Average Efficiency = 
+AVERAGE(Query1_OperatorPerformance[EfficiencyRate])
+```
+
+### Top Performer Name
+```dax
+Top Performer = 
+CALCULATE(
+    SELECTEDVALUE(Query1_OperatorPerformance[Operator]),
+    TOPN(
+        1,
+        Query1_OperatorPerformance,
+        Query1_OperatorPerformance[ComponentsProcessed],
+        DESC
+    )
+)
+```
+
+### Top Performer Components
+```dax
+Top Performer Components = 
+CALCULATE(
+    MAX(Query1_OperatorPerformance[ComponentsProcessed])
+)
+```
+
+### Performance Alerts Count
+```dax
+Red Alerts = 
+COUNTROWS(
+    FILTER(
+        Query1_OperatorPerformance,
+        Query1_OperatorPerformance[ComponentsProcessed] < 50
+    )
+)
+```
+
+### Cross-Training Champions
+```dax
+Cross Training Champions = 
+CALCULATE(
+    DISTINCTCOUNT(Query3_PerformanceTrends[Operator]),
+    FILTER(
+        Query3_PerformanceTrends,
+        Query3_PerformanceTrends[WorkstationsUsed] >= 3
+    )
+)
+```
+
+### Workstation Utilization Leader
+```dax
+Top Workstation = 
+CALCULATE(
+    SELECTEDVALUE(Query2_WorkstationUtilization[WorkstationDescription]),
+    TOPN(
+        1,
+        Query2_WorkstationUtilization,
+        Query2_WorkstationUtilization[UtilizationPercent],
+        DESC
+    )
+)
+```
+
+### 7-Day Average Components
+```dax
+Weekly Average Components = 
+CALCULATE(
+    AVERAGE(Query3_PerformanceTrends[DailyComponents]),
+    FILTER(
+        Query3_PerformanceTrends,
+        Query3_PerformanceTrends[WorkDate] >= TODAY() - 7
+    )
+)
+```
+
+## 🚨 ALERT CALCULATIONS
+
+### Performance Alert Table
+```dax
+Performance Alerts = 
+ADDCOLUMNS(
+    Query1_OperatorPerformance,
+    "Alert Status",
+    SWITCH(
+        TRUE(),
+        [ComponentsProcessed] >= 70, "🟢 GREEN",
+        [ComponentsProcessed] >= 50, "🟡 YELLOW",
+        "🔴 RED"
+    ),
+    "Issue Description",
+    SWITCH(
+        TRUE(),
+        [ComponentsProcessed] >= 70, "Excellent Performance",
+        [ComponentsProcessed] >= 50, "Good Performance - Monitor",
+        [ComponentsProcessed] >= 30, "Below Average Performance",
+        "Critical - Immediate Attention Required"
+    ),
+    "Recommended Action",
+    SWITCH(
+        TRUE(),
+        [ComponentsProcessed] >= 70, "Recognize & Use as Mentor",
+        [ComponentsProcessed] >= 50, "Monitor Trends",
+        [ComponentsProcessed] >= 30, "Provide Additional Support",
+        "Schedule Immediate Coaching"
+    )
+)
+```
+
+## 🎨 CONDITIONAL FORMATTING
+
+### Performance Card Colors
+```dax
+Card Background Color = 
+SWITCH(
+    [Performance Status],
+    "🟢 Excellent", "#28A745",
+    "🟡 Good", "#FFC107",
+    "🟡 Fair", "#FFC107", 
+    "🔴 Needs Attention", "#DC3545",
+    "#6C757D"
+)
+```
+
+### Text Color for Cards
+```dax
+Card Text Color = 
+SWITCH(
+    [Performance Status],
+    "🟢 Excellent", "#FFFFFF",
+    "🟡 Good", "#000000",
+    "🟡 Fair", "#000000",
+    "🔴 Needs Attention", "#FFFFFF",
+    "#FFFFFF"
+)
+```
+
+## 📈 TREND CALCULATIONS
+
+### Performance Trend Direction
+```dax
+Trend Direction = 
+VAR CurrentComponents = [ComponentsProcessed]
+VAR PreviousDayComponents = 
+    CALCULATE(
+        AVERAGE(Query3_PerformanceTrends[DailyComponents]),
+        FILTER(
+            Query3_PerformanceTrends,
+            Query3_PerformanceTrends[WorkDate] = TODAY() - 1 &&
+            Query3_PerformanceTrends[Operator] = SELECTEDVALUE(Query1_OperatorPerformance[Operator])
+        )
+    )
+RETURN
+    SWITCH(
+        TRUE(),
+        CurrentComponents > PreviousDayComponents * 1.1, "📈 Improving",
+        CurrentComponents < PreviousDayComponents * 0.9, "📉 Declining", 
+        "➡️ Stable"
+    )
+```
+
+### Weekly Performance Rating
+```dax
+Weekly Rating = 
+VAR WeeklyAvg = 
+    CALCULATE(
+        AVERAGE(Query3_PerformanceTrends[DailyComponents]),
+        FILTER(
+            Query3_PerformanceTrends,
+            Query3_PerformanceTrends[WorkDate] >= TODAY() - 7 &&
+            Query3_PerformanceTrends[Operator] = SELECTEDVALUE(Query1_OperatorPerformance[Operator])
+        )
+    )
+RETURN
+    SWITCH(
+        TRUE(),
+        WeeklyAvg >= 100, "⭐ Star Performer",
+        WeeklyAvg >= 75, "🌟 High Performer",
+        WeeklyAvg >= 50, "✅ Good Performer",
+        "⚠️ Needs Support"
+    )
+```
+
+## 🏆 RECOGNITION METRICS
+
+### Hall of Fame Operators
+```dax
+Hall of Fame = 
+FILTER(
+    Query1_OperatorPerformance,
+    Query1_OperatorPerformance[ComponentsProcessed] >= 80 &&
+    Query1_OperatorPerformance[EfficiencyRate] = 100
+)
+```
+
+### Cross-Training All-Stars
+```dax
+Cross Training All Stars = 
+FILTER(
+    Query3_PerformanceTrends,
+    Query3_PerformanceTrends[WorkstationsUsed] >= 4
+)
+```
+
+## 💡 USAGE INSTRUCTIONS
+
+1. **Import Data**: Connect to your SQL Server and import the 3 queries
+2. **Create Measures**: Copy and paste these DAX formulas into Power BI
+3. **Build Visuals**: Use the JSON configuration as a guide for visual setup
+4. **Apply Formatting**: Use conditional formatting with the color formulas
+5. **Set Refresh**: Configure automatic refresh every 15 minutes
+6. **Test Alerts**: Verify alert calculations work with your data
+
+## 🎯 KEY PERFORMANCE BENCHMARKS
+
+- **🟢 GREEN (Excellent)**: 70+ components, 95%+ efficiency
+- **🟡 YELLOW (Good)**: 50-69 components, 90%+ efficiency  
+- **🔴 RED (Needs Attention)**: <50 components or <90% efficiency
+- **🔵 BLUE (Cross-Training Star)**: 3+ workstations used
+
+This dashboard will revolutionize Memphis workforce management with real-time insights and actionable intelligence!

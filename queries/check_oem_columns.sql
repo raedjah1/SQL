@@ -1,0 +1,29 @@
+-- CHECK ALL COLUMNS IN ADTReconextRMAData TABLE
+SELECT 
+    COLUMN_NAME,
+    DATA_TYPE,
+    IS_NULLABLE
+FROM INFORMATION_SCHEMA.COLUMNS
+WHERE TABLE_SCHEMA = 'rpt'
+  AND TABLE_NAME = 'ADTReconextRMAData'
+  AND (COLUMN_NAME LIKE '%oem%' 
+       OR COLUMN_NAME LIKE '%OEM%'
+       OR COLUMN_NAME LIKE '%action%'
+       OR COLUMN_NAME LIKE '%Action%'
+       OR COLUMN_NAME LIKE '%opinion%'
+       OR COLUMN_NAME LIKE '%Opinion%')
+ORDER BY COLUMN_NAME;
+
+
+
+
+
+
+
+
+
+
+
+
+
+

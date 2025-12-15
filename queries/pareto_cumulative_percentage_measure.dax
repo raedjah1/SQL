@@ -1,0 +1,33 @@
+-- Power BI DAX Measure for Pareto Chart Cumulative Percentage Line
+-- Table Name: FailCodes
+-- This measure calculates cumulative percentage up to 100%
+
+Cumulative Percentage = 
+VAR CurrentValue = SUM(FailCodes[OccurrenceCount])
+VAR AllData = 
+    CALCULATETABLE(
+        SUMMARIZE(
+            ALLSELECTED(FailCodes[TestCategory]),
+            FailCodes[TestCategory],
+            "@Count", CALCULATE(SUM(FailCodes[OccurrenceCount]))
+        )
+    )
+VAR SortedData = 
+    FILTER(
+        AllData,
+        [@Count] >= CurrentValue
+    )
+VAR RunningTotal = SUMX(SortedData, [@Count])
+VAR GrandTotal = CALCULATE(SUM(FailCodes[OccurrenceCount]), ALLSELECTED(FailCodes[TestCategory]))
+RETURN
+    DIVIDE(RunningTotal, GrandTotal, 0) * 100
+
+-- Instructions for Power BI:
+-- 1. Create this measure in your FailCodes table
+-- 2. In your Combo Chart:
+--    - X-axis: TestCategory (sorted by OccurrenceCount descending)
+--    - Column Y-axis: OccurrenceCount
+--    - Line Y-axis: Cumulative Percentage (this measure)
+-- 3. Format the Line Y-axis to show 0-100% range
+-- 4. Make sure TestCategory is sorted by OccurrenceCount (descending) for proper Pareto effect
+

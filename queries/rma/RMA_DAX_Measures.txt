@@ -1,0 +1,65 @@
+-- ================================================
+-- DAX Measures for RMA Dashboard
+-- Based on RMAFINAL.SQL query
+-- ================================================
+
+-- Measure 1: Credit/Replacement SLA Percentage
+-- Percentage of RMAs with credit/replacement within 30 business days from ship
+ShipToCredit_SLA_Percentage = 
+VAR TotalShipped = 
+    CALCULATE(
+        COUNTROWS('ADTRMA'),
+        NOT(ISBLANK('ADTRMA'[DaysFromShipToCredit]))
+    )
+VAR Within30Days = 
+    CALCULATE(
+        COUNTROWS('ADTRMA'),
+        'ADTRMA'[DaysFromShipToCredit] <= 30,
+        NOT(ISBLANK('ADTRMA'[DaysFromShipToCredit]))
+    )
+VAR PercentageValue = 
+    IF(
+        TotalShipped > 0,
+        DIVIDE(Within30Days, TotalShipped, 0) * 100,
+        BLANK()
+    )
+RETURN
+    IF(
+        ISBLANK(PercentageValue),
+        BLANK(),
+        FORMAT(PercentageValue, "0.00") & "%"
+    )
+
+-- Measure 2: Credit/Replacement SLA Status (Calculated Column)
+-- Status for each RMA: Pass (credited within 30 days), Fail (>30 days or pending >30 days), or Not Credited Yet (pending but <=30 days)
+ShipToCredit_SLA_Status = 
+IF(
+    ISBLANK('ADTRMA'[CreditReplacementDate]),
+    -- No credit/replacement date yet - check if it's past 30 days
+    IF(
+        ISBLANK('ADTRMA'[DaysFromShipToCredit]),
+        "Not Shipped",
+        IF(
+            'ADTRMA'[DaysFromShipToCredit] > 30,
+            "Fail",  -- Pending and over 30 days = Fail
+            "Not Credited Yet"  -- Pending but still within 30 days
+        )
+    ),
+    -- Has credit/replacement date - check if within 30 days
+    IF(
+        'ADTRMA'[DaysFromShipToCredit] <= 30,
+        "Pass",
+        "Fail"
+    )
+)
+
+-- ================================================
+-- Usage Notes:
+-- ================================================
+-- 1. ShipToCredit_SLA_Percentage: Measure that calculates the percentage of RMAs that received credit/replacement within 30 business days
+-- 2. ShipToCredit_SLA_Status: Calculated column for each RMA row showing Pass/Fail/Not Shipped
+-- 3. Target: 30 business days from ShipDate to CreditReplacementDate
+-- 4. Uses GETDATE() for pending items (CreditReplacementDate is NULL) to track aging
+-- 5. Format ShipToCredit_SLA_Percentage as text with percentage sign (already formatted in measure)
+-- ================================================
+

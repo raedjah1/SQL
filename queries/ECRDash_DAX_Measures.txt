@@ -1,0 +1,161 @@
+-- ================================================
+-- DAX Measures for ECR Dashboard
+-- Based on ECRDash.sql query
+-- SLA = Same day shipping (DaysFromOrderCreateToShip = 0)
+-- ================================================
+
+-- Measure 1: ECR SLA Percentage (Order Lines)
+-- Percentage of order lines shipped same day (DaysFromOrderCreateToShip = 0)
+-- Based on count of all order line rows
+ECR_SLA_Percentage_OrderLines = 
+VAR TotalShipped = 
+    CALCULATE(
+        COUNTROWS('ECR Dashboard'),
+        NOT(ISBLANK('ECR Dashboard'[DaysFromOrderCreateToShip]))
+    )
+VAR SameDay = 
+    CALCULATE(
+        COUNTROWS('ECR Dashboard'),
+        'ECR Dashboard'[DaysFromOrderCreateToShip] = 0,
+        NOT(ISBLANK('ECR Dashboard'[DaysFromOrderCreateToShip]))
+    )
+RETURN
+    IF(
+        TotalShipped > 0,
+        DIVIDE(SameDay, TotalShipped, 0) * 100,
+        BLANK()
+    )
+
+-- Measure 2: ECR SLA Percentage (Quantity)
+-- Percentage of quantity shipped same day (DaysFromOrderCreateToShip = 0)
+ECR_SLA_Percentage_Quantity = 
+VAR TotalQty = 
+    CALCULATE(
+        SUM('ECR Dashboard'[Qty]),
+        NOT(ISBLANK('ECR Dashboard'[DaysFromOrderCreateToShip]))
+    )
+VAR SameDayQty = 
+    CALCULATE(
+        SUM('ECR Dashboard'[Qty]),
+        'ECR Dashboard'[DaysFromOrderCreateToShip] = 0,
+        NOT(ISBLANK('ECR Dashboard'[DaysFromOrderCreateToShip]))
+    )
+RETURN
+    IF(
+        TotalQty > 0,
+        DIVIDE(SameDayQty, TotalQty, 0) * 100,
+        BLANK()
+    )
+
+-- Measure 3: Total Orders Shipped (Order Lines)
+-- Total count of all order line rows (for denominator)
+TotalOrdersShipped = 
+    CALCULATE(
+        COUNTROWS('ECR Dashboard'),
+        NOT(ISBLANK('ECR Dashboard'[DaysFromOrderCreateToShip]))
+    )
+
+-- Measure 4: Total Quantity Shipped
+-- Total quantity shipped (for denominator)
+TotalQuantityShipped = 
+    CALCULATE(
+        SUM('ECR Dashboard'[Qty]),
+        NOT(ISBLANK('ECR Dashboard'[DaysFromOrderCreateToShip]))
+    )
+
+-- Measure 5: Order Lines Percentage by Day
+-- Percentage of total order lines for each DaysFromOrderCreateToShip bucket
+-- Use in a matrix/table with DaysFromOrderCreateToShip as rows
+-- Uses DISTINCTCOUNT to count unique OrderLineIDs (not rows)
+OrderLines_Percentage_ByDay = 
+VAR CurrentDayCount = 
+    DISTINCTCOUNT('ECR Dashboard'[OrderLineID])
+VAR TotalOrderLines = 
+    CALCULATE(
+        DISTINCTCOUNT('ECR Dashboard'[OrderLineID]),
+        ALL('ECR Dashboard'[DaysFromOrderCreateToShip]),
+        NOT(ISBLANK('ECR Dashboard'[DaysFromOrderCreateToShip]))
+    )
+RETURN
+    IF(
+        TotalOrderLines > 0,
+        FORMAT(DIVIDE(CurrentDayCount, TotalOrderLines, 0) * 100, "0.00") & "%",
+        BLANK()
+    )
+
+-- Measure 6: Quantity Percentage by Day
+-- Percentage of total quantity for each DaysFromOrderCreateToShip bucket
+-- Use in a matrix/table with DaysFromOrderCreateToShip as rows
+Quantity_Percentage_ByDay = 
+VAR CurrentDayQty = 
+    SUM('ECR Dashboard'[Qty])
+VAR TotalQty = 
+    CALCULATE(
+        SUM('ECR Dashboard'[Qty]),
+        ALL('ECR Dashboard'[DaysFromOrderCreateToShip]),
+        NOT(ISBLANK('ECR Dashboard'[DaysFromOrderCreateToShip]))
+    )
+RETURN
+    IF(
+        TotalQty > 0,
+        DIVIDE(CurrentDayQty, TotalQty, 0) * 100,
+        BLANK()
+    )
+
+-- Measure 7: Same Day Shipping Percentage (Card)
+-- Percentage of distinct order lines shipped same day (DaysFromOrderCreateToShip = 0)
+-- Perfect for a card visual showing overall SLA compliance
+SameDay_OrderLines_Percentage = 
+VAR SameDayCount = 
+    CALCULATE(
+        DISTINCTCOUNT('ECR Dashboard'[OrderLineID]),
+        'ECR Dashboard'[DaysFromOrderCreateToShip] = 0,
+        NOT(ISBLANK('ECR Dashboard'[DaysFromOrderCreateToShip]))
+    )
+VAR TotalOrderLines = 
+    CALCULATE(
+        DISTINCTCOUNT('ECR Dashboard'[OrderLineID]),
+        NOT(ISBLANK('ECR Dashboard'[DaysFromOrderCreateToShip]))
+    )
+RETURN
+    IF(
+        TotalOrderLines > 0,
+        FORMAT(DIVIDE(SameDayCount, TotalOrderLines, 0) * 100, "0.00") & "%",
+        BLANK()
+    )
+
+-- Measure 8: Percentage by Day (Row Count)
+-- Percentage of total rows for each DaysFromOrderCreateToShip bucket
+-- Uses COUNTROWS instead of DISTINCTCOUNT (counts all rows, not unique OrderLineIDs)
+Percentage = 
+VAR CurrentDayCount = 
+    COUNTROWS('ECR Dashboard')
+VAR TotalOrderLines = 
+    CALCULATE(
+        COUNTROWS('ECR Dashboard'),
+        ALL('ECR Dashboard'[DaysFromOrderCreateToShip]),
+        NOT(ISBLANK('ECR Dashboard'[DaysFromOrderCreateToShip]))
+    )
+RETURN
+    IF(
+        TotalOrderLines > 0,
+        FORMAT(DIVIDE(CurrentDayCount, TotalOrderLines, 0) * 100, "0.00") & "%",
+        BLANK()
+    )
+
+-- ================================================
+-- Usage Notes:
+-- ================================================
+-- 1. ECR_SLA_Percentage_OrderLines: Percentage of order lines shipped same day (counts rows)
+-- 2. ECR_SLA_Percentage_Quantity: Percentage of quantity shipped same day (sums Qty)
+-- 3. Format all percentage measures as Percentage in Power BI (0.00% format)
+-- 4. SLA = Same day shipping (DaysFromOrderCreateToShip = 0)
+-- 5. Use TotalOrdersShipped for order line denominator, TotalQuantityShipped for quantity denominator
+-- 6. OrderLines_Percentage_ByDay: Use in matrix/table with DaysFromOrderCreateToShip as rows
+--    Shows % of total order lines for each day bucket (e.g., Day 0 = 20%, Day 1 = 30%, etc.)
+-- 7. Quantity_Percentage_ByDay: Use in matrix/table with DaysFromOrderCreateToShip as rows
+--    Shows % of total quantity for each day bucket
+-- 8. SameDay_OrderLines_Percentage: Use in a card visual to show overall same-day shipping %
+--    Shows percentage of distinct order lines shipped same day (Day 0) with % symbol
+-- ================================================
+

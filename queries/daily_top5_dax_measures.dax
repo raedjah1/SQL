@@ -1,0 +1,179 @@
+// =====================================================
+// POWER BI DAX MEASURES FOR TOP 5 DAILY LEADERBOARD
+// =====================================================
+// Alternative to SQL query - use if you prefer DAX ranking
+// These measures work with your existing hourly data table
+
+// -----------------------------------------------------
+// CORE DAILY AGGREGATION MEASURES
+// -----------------------------------------------------
+
+Daily Transaction Count = 
+CALCULATE(
+    SUM('YourHourlyTable'[TransactionCount]),
+    ALLEXCEPT('YourHourlyTable', 'YourHourlyTable'[Operator], 'YourHourlyTable'[WorkDate], 'YourHourlyTable'[CustomerCategory])
+)
+
+Daily Performance Percentage = 
+VAR DailyTransactions = [Daily Transaction Count]
+VAR DailyTarget = [Daily Target Sum]
+RETURN
+    IF(
+        DailyTarget > 0,
+        DIVIDE(DailyTransactions * 100, DailyTarget, 0),
+        0
+    )
+
+Daily Target Sum = 
+CALCULATE(
+    SUM('YourHourlyTable'[HourlyTarget]),
+    ALLEXCEPT('YourHourlyTable', 'YourHourlyTable'[Operator], 'YourHourlyTable'[WorkDate], 'YourHourlyTable'[CustomerCategory])
+)
+
+// -----------------------------------------------------
+// RANKING MEASURES
+// -----------------------------------------------------
+
+Daily Rank Overall = 
+VAR CurrentOperator = SELECTEDVALUE('YourHourlyTable'[Operator])
+VAR CurrentDate = SELECTEDVALUE('YourHourlyTable'[WorkDate])
+VAR CurrentTransactions = [Daily Transaction Count]
+RETURN
+IF(
+    NOT ISBLANK(CurrentTransactions),
+    RANKX(
+        FILTER(
+            SUMMARIZE(
+                'YourHourlyTable',
+                'YourHourlyTable'[Operator],
+                'YourHourlyTable'[WorkDate],
+                "@DailyTransactions", [Daily Transaction Count]
+            ),
+            'YourHourlyTable'[WorkDate] = CurrentDate
+        ),
+        [@DailyTransactions],
+        ,
+        DESC
+    ),
+    BLANK()
+)
+
+Daily Rank by Process = 
+VAR CurrentOperator = SELECTEDVALUE('YourHourlyTable'[Operator])
+VAR CurrentDate = SELECTEDVALUE('YourHourlyTable'[WorkDate])
+VAR CurrentCategory = SELECTEDVALUE('YourHourlyTable'[CustomerCategory])
+VAR CurrentTransactions = [Daily Transaction Count]
+RETURN
+IF(
+    NOT ISBLANK(CurrentTransactions),
+    RANKX(
+        FILTER(
+            SUMMARIZE(
+                'YourHourlyTable',
+                'YourHourlyTable'[Operator],
+                'YourHourlyTable'[WorkDate],
+                'YourHourlyTable'[CustomerCategory],
+                "@DailyTransactions", [Daily Transaction Count]
+            ),
+            'YourHourlyTable'[WorkDate] = CurrentDate 
+            && 'YourHourlyTable'[CustomerCategory] = CurrentCategory
+        ),
+        [@DailyTransactions],
+        ,
+        DESC
+    ),
+    BLANK()
+)
+
+// -----------------------------------------------------
+// TOP 5 FILTER MEASURES
+// -----------------------------------------------------
+
+Is Top 5 Overall = 
+VAR CurrentRank = [Daily Rank Overall]
+RETURN
+    CurrentRank <= 5
+
+Is Top 5 by Process = 
+VAR CurrentRank = [Daily Rank by Process]
+RETURN
+    CurrentRank <= 5
+
+// -----------------------------------------------------
+// PERFORMANCE BADGE MEASURE
+// -----------------------------------------------------
+
+Performance Badge = 
+VAR CurrentRank = [Daily Rank Overall]
+RETURN
+SWITCH(
+    TRUE(),
+    CurrentRank = 1, "🥇 #1 - Top Performer",
+    CurrentRank = 2, "🥈 #2 - Excellent", 
+    CurrentRank = 3, "🥉 #3 - Great Work",
+    CurrentRank = 4, "⭐ #4 - Strong Performance",
+    CurrentRank = 5, "⭐ #5 - Good Performance",
+    "#" & CurrentRank
+)
+
+// -----------------------------------------------------
+// DAILY KPI STATUS MEASURE
+// -----------------------------------------------------
+
+Daily KPI Status = 
+VAR DailyTransactions = [Daily Transaction Count]
+VAR DailyTarget = [Daily Target Sum]
+VAR PerformanceRatio = DIVIDE(DailyTransactions, DailyTarget, 0)
+RETURN
+SWITCH(
+    TRUE(),
+    PerformanceRatio >= 1, "GREEN - Daily Target Met",
+    PerformanceRatio >= 0.8, "YELLOW - Close to Target", 
+    "RED - Below Target"
+)
+
+// -----------------------------------------------------
+// USAGE INSTRUCTIONS FOR POWER BI
+// -----------------------------------------------------
+/*
+
+VISUAL SETUP:
+
+1. TABLE/MATRIX VISUAL for Top 5 Leaderboard:
+   - Rows: Operator, Performance Badge
+   - Values: Daily Transaction Count, Daily Performance Percentage, Daily KPI Status
+   - Filters: Is Top 5 Overall = TRUE
+
+2. SEPARATE VISUALS by Process:
+   - Same setup but filter: Is Top 5 by Process = TRUE
+   - Add CustomerCategory to filters
+
+3. SLICERS:
+   - WorkDate (same as your hourly report)
+   - CustomerCategory (for process filtering)
+
+4. CONDITIONAL FORMATTING:
+   - Daily KPI Status: Green/Yellow/Red based on text
+   - Performance Badge: Custom formatting by rank
+
+FILTER INTERACTION:
+- Date slicer affects both hourly and daily views
+- Process slicer shows top 5 within selected process
+- Remove process filter to see overall top 5
+
+*/
+
+// =====================================================
+// ALTERNATIVE: SIMPLIFIED VERSION
+// =====================================================
+// If the above is too complex, use this simpler approach:
+
+Simple Daily Rank = 
+RANKX(
+    ALLSELECTED('YourHourlyTable'[Operator]),
+    [Daily Transaction Count],
+    ,
+    DESC
+)
+
+Top 5 Filter = [Simple Daily Rank] <= 5

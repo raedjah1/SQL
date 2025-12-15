@@ -1,0 +1,57 @@
+-- Power BI DAX Measures for Pareto Chart
+-- Add these measures to your Power BI model
+
+-- Measure 1: Total Occurrences (for percentage calculation)
+Total Occurrences = SUM('YourTableName'[OccurrenceCount])
+
+-- Measure 2: Cumulative Occurrences (running total)
+Cumulative Occurrences = 
+VAR CurrentCategory = MAX('YourTableName'[TestCategory])
+VAR CurrentValue = SUM('YourTableName'[OccurrenceCount])
+VAR AllCategories = 
+    CALCULATETABLE(
+        VALUES('YourTableName'[TestCategory]),
+        ALLSELECTED('YourTableName'[TestCategory])
+    )
+VAR CategoryValues = 
+    ADDCOLUMNS(
+        AllCategories,
+        "@Value", CALCULATE(SUM('YourTableName'[OccurrenceCount]))
+    )
+VAR SortedCategories = 
+    FILTER(
+        CategoryValues,
+        [@Value] >= CurrentValue
+    )
+RETURN
+    SUMX(SortedCategories, [@Value])
+
+-- Measure 3: Cumulative Percentage (for Pareto line)
+Cumulative Percentage = 
+DIVIDE(
+    [Cumulative Occurrences],
+    [Total Occurrences],
+    0
+) * 100
+
+-- Alternative simpler measure (if categories are pre-sorted):
+Cumulative Percentage Simple = 
+VAR CurrentValue = SUM('YourTableName'[OccurrenceCount])
+VAR RunningTotal = 
+    CALCULATE(
+        SUM('YourTableName'[OccurrenceCount]),
+        FILTER(
+            ALLSELECTED('YourTableName'[TestCategory]),
+            'YourTableName'[TestCategory] <= MAX('YourTableName'[TestCategory])
+        )
+    )
+VAR GrandTotal = CALCULATE(SUM('YourTableName'[OccurrenceCount]), ALLSELECTED('YourTableName'))
+RETURN
+    DIVIDE(RunningTotal, GrandTotal, 0) * 100
+
+
+
+
+
+
+

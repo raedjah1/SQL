@@ -1,0 +1,368 @@
+{
+  "name": "Memphis Workforce Performance Dashboard",
+  "description": "Real-time workforce performance monitoring with operator tracking, workstation utilization, and performance trends",
+  "version": "1.0",
+  "pages": [
+    {
+      "name": "Workforce Overview",
+      "displayName": "Memphis Workforce Dashboard",
+      "width": 1280,
+      "height": 720,
+      "background": "#F8F9FA",
+      "visuals": [
+        {
+          "name": "operator_performance_cards",
+          "type": "card",
+          "position": {
+            "x": 20,
+            "y": 80,
+            "width": 500,
+            "height": 300
+          },
+          "title": "🏆 TOP PERFORMERS - TODAY",
+          "dataSource": "Query1_OperatorPerformance",
+          "config": {
+            "cardLayout": "grid",
+            "columns": 2,
+            "rows": 3,
+            "cardTemplate": {
+              "backgroundColor": "conditional",
+              "borderRadius": 8,
+              "padding": 12,
+              "textAlign": "center",
+              "conditionalFormatting": {
+                "field": "ComponentsProcessed",
+                "conditions": [
+                  {
+                    "operator": ">=",
+                    "value": 70,
+                    "backgroundColor": "#28A745",
+                    "textColor": "#FFFFFF",
+                    "icon": "🟢"
+                  },
+                  {
+                    "operator": ">=",
+                    "value": 50,
+                    "backgroundColor": "#FFC107",
+                    "textColor": "#000000",
+                    "icon": "🟡"
+                  },
+                  {
+                    "operator": "<",
+                    "value": 50,
+                    "backgroundColor": "#DC3545",
+                    "textColor": "#FFFFFF",
+                    "icon": "🔴"
+                  }
+                ]
+              }
+            },
+            "fields": [
+              {
+                "field": "Operator",
+                "display": "title",
+                "fontSize": 14,
+                "fontWeight": "bold"
+              },
+              {
+                "field": "ComponentsProcessed",
+                "display": "metric",
+                "fontSize": 24,
+                "fontWeight": "bold",
+                "suffix": " components"
+              },
+              {
+                "field": "EfficiencyRate",
+                "display": "submetric",
+                "fontSize": 12,
+                "suffix": "% efficiency"
+              },
+              {
+                "field": "PreferredWorkstation",
+                "display": "tag",
+                "fontSize": 10,
+                "backgroundColor": "#E9ECEF"
+              }
+            ]
+          }
+        },
+        {
+          "name": "workstation_utilization",
+          "type": "donutChart",
+          "position": {
+            "x": 540,
+            "y": 80,
+            "width": 300,
+            "height": 300
+          },
+          "title": "🏭 WORKSTATION UTILIZATION",
+          "dataSource": "Query2_WorkstationUtilization",
+          "config": {
+            "innerRadius": 60,
+            "outerRadius": 120,
+            "showLabels": true,
+            "showPercentages": true,
+            "colorScheme": [
+              "#4A90E2",
+              "#9013FE", 
+              "#FFD700",
+              "#32CD32",
+              "#FF8C00",
+              "#DC143C"
+            ],
+            "legend": {
+              "position": "right",
+              "fontSize": 12
+            },
+            "dataLabels": {
+              "fontSize": 10,
+              "fontWeight": "bold"
+            }
+          }
+        },
+        {
+          "name": "performance_trends",
+          "type": "lineChart",
+          "position": {
+            "x": 20,
+            "y": 400,
+            "width": 640,
+            "height": 280
+          },
+          "title": "📈 7-DAY PERFORMANCE TRENDS",
+          "dataSource": "Query3_PerformanceTrends",
+          "config": {
+            "xAxis": {
+              "field": "WorkDate",
+              "type": "datetime",
+              "format": "MM/dd"
+            },
+            "yAxis": {
+              "field": "DailyComponents",
+              "type": "numeric",
+              "title": "Components Processed"
+            },
+            "series": {
+              "groupBy": "Operator",
+              "maxSeries": 8,
+              "lineWidth": 2,
+              "pointRadius": 4
+            },
+            "colors": [
+              "#28A745",
+              "#007BFF", 
+              "#FFC107",
+              "#DC3545",
+              "#6F42C1",
+              "#20C997",
+              "#FD7E14",
+              "#E83E8C"
+            ],
+            "legend": {
+              "position": "bottom",
+              "fontSize": 10
+            },
+            "tooltip": {
+              "format": "{Operator}: {DailyComponents} components on {WorkDate}"
+            }
+          }
+        },
+        {
+          "name": "alerts_panel",
+          "type": "table",
+          "position": {
+            "x": 680,
+            "y": 400,
+            "width": 580,
+            "height": 280
+          },
+          "title": "🚨 ALERTS & ACTIONS",
+          "dataSource": "AlertsCalculated",
+          "config": {
+            "columns": [
+              {
+                "field": "AlertType",
+                "title": "Status",
+                "width": 80,
+                "alignment": "center",
+                "conditionalFormatting": {
+                  "type": "backgroundColor",
+                  "conditions": [
+                    {
+                      "value": "🔴 RED",
+                      "backgroundColor": "#FFE6E6"
+                    },
+                    {
+                      "value": "🟡 YELLOW", 
+                      "backgroundColor": "#FFF9E6"
+                    },
+                    {
+                      "value": "🟢 GREEN",
+                      "backgroundColor": "#E6F7E6"
+                    },
+                    {
+                      "value": "🔵 BLUE",
+                      "backgroundColor": "#E6F2FF"
+                    }
+                  ]
+                }
+              },
+              {
+                "field": "Operator",
+                "title": "Operator",
+                "width": 120,
+                "fontWeight": "bold"
+              },
+              {
+                "field": "Issue",
+                "title": "Issue/Opportunity",
+                "width": 200
+              },
+              {
+                "field": "Action",
+                "title": "Recommended Action",
+                "width": 180,
+                "fontSize": 11
+              }
+            ],
+            "alternatingRowColors": true,
+            "fontSize": 12,
+            "headerFontSize": 13,
+            "headerFontWeight": "bold"
+          }
+        },
+        {
+          "name": "kpi_summary",
+          "type": "kpiCard",
+          "position": {
+            "x": 860,
+            "y": 80,
+            "width": 400,
+            "height": 300
+          },
+          "title": "📊 KEY METRICS",
+          "config": {
+            "layout": "grid",
+            "columns": 2,
+            "rows": 3,
+            "cards": [
+              {
+                "title": "Active Operators",
+                "value": "COUNT(DISTINCT Operator)",
+                "dataSource": "Query1_OperatorPerformance",
+                "format": "number",
+                "backgroundColor": "#E3F2FD",
+                "icon": "👥"
+              },
+              {
+                "title": "Total Components Today",
+                "value": "SUM(ComponentsProcessed)",
+                "dataSource": "Query1_OperatorPerformance", 
+                "format": "number",
+                "backgroundColor": "#F3E5F5",
+                "icon": "⚙️"
+              },
+              {
+                "title": "Average Efficiency",
+                "value": "AVERAGE(EfficiencyRate)",
+                "dataSource": "Query1_OperatorPerformance",
+                "format": "percentage",
+                "backgroundColor": "#E8F5E8",
+                "icon": "📈"
+              },
+              {
+                "title": "Active Workstations", 
+                "value": "COUNT(WorkstationDescription)",
+                "dataSource": "Query2_WorkstationUtilization",
+                "format": "number",
+                "backgroundColor": "#FFF3E0",
+                "icon": "🏭"
+              },
+              {
+                "title": "Cross-Training Stars",
+                "value": "COUNTIF(WorkstationsUsed >= 3)",
+                "dataSource": "Query3_PerformanceTrends",
+                "format": "number",
+                "backgroundColor": "#F1F8E9",
+                "icon": "🌟"
+              },
+              {
+                "title": "Performance Alerts",
+                "value": "COUNT(AlertType = 'RED')",
+                "dataSource": "AlertsCalculated",
+                "format": "number",
+                "backgroundColor": "#FFEBEE",
+                "icon": "🚨"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "dataModel": {
+    "tables": [
+      {
+        "name": "Query1_OperatorPerformance",
+        "columns": [
+          {"name": "Operator", "type": "text"},
+          {"name": "ComponentsProcessed", "type": "number"},
+          {"name": "EfficiencyRate", "type": "number"},
+          {"name": "PreferredWorkstation", "type": "text"},
+          {"name": "LastActivity", "type": "datetime"},
+          {"name": "ActiveMinutes", "type": "number"}
+        ]
+      },
+      {
+        "name": "Query2_WorkstationUtilization",
+        "columns": [
+          {"name": "WorkstationDescription", "type": "text"},
+          {"name": "ActiveOrders", "type": "number"},
+          {"name": "UtilizationPercent", "type": "number"},
+          {"name": "OperatorsActive", "type": "number"}
+        ]
+      },
+      {
+        "name": "Query3_PerformanceTrends", 
+        "columns": [
+          {"name": "Operator", "type": "text"},
+          {"name": "WorkDate", "type": "date"},
+          {"name": "DailyComponents", "type": "number"},
+          {"name": "DailyEfficiency", "type": "number"},
+          {"name": "WorkstationsUsed", "type": "number"}
+        ]
+      }
+    ],
+    "measures": [
+      {
+        "name": "AlertsCalculated",
+        "expression": "ADDCOLUMNS(Query1_OperatorPerformance, \"AlertType\", SWITCH(TRUE(), [ComponentsProcessed] >= 70, \"🟢 GREEN\", [ComponentsProcessed] >= 50, \"🟡 YELLOW\", \"🔴 RED\"), \"Issue\", SWITCH(TRUE(), [ComponentsProcessed] >= 70, \"Excellent Performance\", [ComponentsProcessed] >= 50, \"Good Performance\", \"Below Target\"), \"Action\", SWITCH(TRUE(), [ComponentsProcessed] >= 70, \"Recognize Achievement\", [ComponentsProcessed] >= 50, \"Monitor Closely\", \"Schedule Coaching\"))"
+      }
+    ]
+  },
+  "refresh": {
+    "schedule": "every15minutes",
+    "autoRefresh": true
+  },
+  "filters": [
+    {
+      "name": "DateRange",
+      "type": "dateRange",
+      "defaultValue": "today",
+      "position": "top"
+    },
+    {
+      "name": "WorkstationFilter",
+      "type": "multiSelect",
+      "field": "PreferredWorkstation",
+      "position": "top"
+    }
+  ],
+  "theme": {
+    "primaryColor": "#007BFF",
+    "secondaryColor": "#6C757D", 
+    "backgroundColor": "#F8F9FA",
+    "textColor": "#212529",
+    "fontFamily": "Segoe UI, Arial, sans-serif"
+  }
+}

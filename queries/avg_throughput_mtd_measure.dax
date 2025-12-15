@@ -1,0 +1,117 @@
+-- ============================================
+-- AVG THROUGHPUT MTD - DAX MEASURE FOR POWER BI
+-- ============================================
+-- This measure calculates average throughput month-to-date
+-- Throughput = Count of rows where StatusID IN (15, 17, 38)
+-- Average = Throughput Count / Business Days Month-to-Date
+-- ============================================
+
+Avg Throughput MTD = 
+VAR CurrentDate = TODAY()
+VAR FirstDayOfMonth = DATE(YEAR(CurrentDate), MONTH(CurrentDate), 1)
+VAR BusinessDaysMTD = 
+    CALCULATE(
+        COUNTROWS(
+            FILTER(
+                CALENDAR(FirstDayOfMonth, CurrentDate),
+                WEEKDAY([Date], 2) <= 5  -- Monday = 1, Friday = 5 (excludes weekends)
+            )
+        )
+    )
+VAR ThroughputCount = 
+    CALCULATE(
+        COUNTROWS('rpt.WOHeader'),  -- Replace 'rpt.WOHeader' with your actual table name
+        'rpt.WOHeader'[StatusID] IN {15, 17, 38},  -- Throughput statuses
+        'rpt.WOHeader'[CreateDate] >= FirstDayOfMonth,
+        'rpt.WOHeader'[CreateDate] <= CurrentDate
+    )
+RETURN
+    IF(
+        BusinessDaysMTD > 0,
+        DIVIDE(ThroughputCount, BusinessDaysMTD, 0),
+        0
+    )
+
+-- ============================================
+-- ALTERNATIVE VERSION: Using Date Table
+-- ============================================
+-- If you have a Date table in your Power BI model, use this version instead:
+
+Avg Throughput MTD (With Date Table) = 
+VAR CurrentDate = TODAY()
+VAR FirstDayOfMonth = DATE(YEAR(CurrentDate), MONTH(CurrentDate), 1)
+VAR BusinessDaysMTD = 
+    CALCULATE(
+        COUNTROWS('Date'),  -- Replace 'Date' with your Date table name
+        'Date'[Date] >= FirstDayOfMonth,
+        'Date'[Date] <= CurrentDate,
+        'Date'[IsWeekend] = FALSE()  -- Assuming you have an IsWeekend column
+    )
+VAR ThroughputCount = 
+    CALCULATE(
+        COUNTROWS('rpt.WOHeader'),  -- Replace 'rpt.WOHeader' with your actual table name
+        'rpt.WOHeader'[StatusID] IN {15, 17, 38},  -- Throughput statuses
+        'rpt.WOHeader'[CreateDate] >= FirstDayOfMonth,
+        'rpt.WOHeader'[CreateDate] <= CurrentDate
+    )
+RETURN
+    IF(
+        BusinessDaysMTD > 0,
+        DIVIDE(ThroughputCount, BusinessDaysMTD, 0),
+        0
+    )
+
+-- ============================================
+-- SUPPORTING MEASURES (Optional)
+-- ============================================
+
+-- Total Throughput Count MTD
+Total Throughput MTD = 
+VAR CurrentDate = TODAY()
+VAR FirstDayOfMonth = DATE(YEAR(CurrentDate), MONTH(CurrentDate), 1)
+RETURN
+    CALCULATE(
+        COUNTROWS('rpt.WOHeader'),  -- Replace 'rpt.WOHeader' with your actual table name
+        'rpt.WOHeader'[StatusID] IN {15, 17, 38},  -- Throughput statuses
+        'rpt.WOHeader'[CreateDate] >= FirstDayOfMonth,
+        'rpt.WOHeader'[CreateDate] <= CurrentDate
+    )
+
+-- Business Days MTD
+Business Days MTD = 
+VAR CurrentDate = TODAY()
+VAR FirstDayOfMonth = DATE(YEAR(CurrentDate), MONTH(CurrentDate), 1)
+RETURN
+    CALCULATE(
+        COUNTROWS(
+            FILTER(
+                CALENDAR(FirstDayOfMonth, CurrentDate),
+                WEEKDAY([Date], 2) <= 5  -- Monday = 1, Friday = 5
+            )
+        )
+    )
+
+-- ============================================
+-- USAGE INSTRUCTIONS
+-- ============================================
+-- 1. Replace 'rpt.WOHeader' with your actual table name from Power BI
+-- 2. If your table name has spaces, use single quotes: 'My Table Name'
+-- 3. If your StatusID column has a different name, update it
+-- 4. If your CreateDate column has a different name, update it
+-- 5. Copy the measure into Power BI Desktop > Modeling > New Measure
+-- 6. Use the measure in cards, tables, or other visuals
+-- ============================================
+
+
+
+
+
+
+
+
+
+
+
+
+
+

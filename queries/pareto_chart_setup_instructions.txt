@@ -1,0 +1,50 @@
+Power BI Pareto Chart Setup - Secondary Y-Axis for Percentage Line
+
+1. CREATE THE COMBO CHART:
+   - Visual type: Combo Chart (Clustered Column & Line Chart)
+   - X-axis: TestCategory (sorted by OccurrenceCount descending)
+
+2. ADD COLUMN VALUES (Bars - Left Y-Axis):
+   - Y-axis: OccurrenceCount
+   - This will show as bars on the left side
+
+3. ADD LINE VALUES (Line - Right Y-Axis):
+   - Y-axis: Cumulative Percentage (your measure)
+   - Click on the measure in the "Line values" well
+   - In the formatting pane, find "Y-Axis" section
+   - Toggle ON "Secondary" or "Use secondary axis"
+   - This moves the line to the right Y-axis
+
+4. FORMAT THE SECONDARY Y-AXIS (Right Side - Percentages):
+   - Select the visual
+   - Go to Format visual pane
+   - Expand "Y-Axis (Line)" or "Secondary Y-Axis"
+   - Set:
+     * Min: 0
+     * Max: 100
+     * Display units: None (or show as percentage)
+     * Format: Percentage (or set decimal places to 0)
+     * Title: "Cumulative %" or "Percentage"
+
+5. FORMAT THE PRIMARY Y-AXIS (Left Side - Counts):
+   - Expand "Y-Axis (Column)" or "Primary Y-Axis"
+   - Set appropriate min/max for your count values
+   - Title: "Occurrence Count" or "Count"
+
+6. OPTIONAL FORMATTING:
+   - Make sure TestCategory is sorted by OccurrenceCount (descending)
+   - Format the line: Make it thicker, different color (often red)
+   - Format bars: Choose a color that contrasts with the line
+
+RESULT:
+- Left Y-axis: Shows count values (0, 50, 100, etc.) for the bars
+- Right Y-axis: Shows percentage values (0%, 25%, 50%, 75%, 100%) for the line
+- The line will go from 0% to 100% on the right side
+- The bars show actual counts on the left side
+
+
+
+
+
+
+
