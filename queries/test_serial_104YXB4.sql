@@ -1,35 +1,38 @@
+-- Simple test query for serial 104YXB4
+-- Tests the SerialFirstPass logic for a single serial number
+
 SELECT 
-    TestsWithMetadata.SerialNumber,
+    SerialNumber,
     
     -- First Pass Y/N (based on very first test ever)
     CASE 
-        WHEN TestsWithMetadata.First_Test_Result IN ('PASS', 'SUCCEEDED', 'Passed', 'finished', 'Like New')
+        WHEN First_Test_Result IN ('PASS', 'SUCCEEDED', 'Passed', 'finished', 'Like New')
         THEN 'Y'
         ELSE 'N'
     END AS First_Pass,
     
     -- Total number of touches (tests) for this unit
-    TestsWithMetadata.Total_Tests_Ever AS Total_Touches,
+    Total_Tests_Ever AS Total_Touches,
     
     -- Number of days this unit was tested
-    TestsWithMetadata.Days_Touched,
+    Days_Touched,
     
     -- Context information
-    TestsWithMetadata.Family,
-    TestsWithMetadata.LOB,
-    TestsWithMetadata.Program,
-    TestsWithMetadata.TestArea,
-    TestsWithMetadata.MachineName,
+    Family,
+    LOB,
+    Program,
+    TestArea,
+    MachineName,
     
     -- Additional details
-    TestsWithMetadata.First_Test_Date,
-    TestsWithMetadata.Last_Test_Date,
-    TestsWithMetadata.First_Test_Result,
-    TestsWithMetadata.Latest_Result,
+    First_Test_Date,
+    Last_Test_Date,
+    First_Test_Result,
+    Latest_Result,
     
     -- Categorization
     CASE 
-        WHEN UPPER(TestsWithMetadata.First_Test_FileReference) LIKE '%INTERACTIVE%' THEN 'Interactive Test'
+        WHEN UPPER(First_Test_FileReference) LIKE '%INTERACTIVE%' THEN 'Interactive Test'
         ELSE 'Other'
     END AS Category,
     
@@ -37,11 +40,11 @@ SELECT
     ISNULL(gcf_errors.GCF_Errors_Days, 0) AS GCF_Errors_Count,
     
     -- Total Error Touches (Days_Touched - 1 + GCF days)
-    (TestsWithMetadata.Days_Touched - 1) + ISNULL(gcf_errors.GCF_Errors_Days, 0) AS Total_Error_Touches,
+    (Days_Touched - 1) + ISNULL(gcf_errors.GCF_Errors_Days, 0) AS Total_Error_Touches,
     
     -- Error Status (No Error/FGA if 0, TF if not 0)
     CASE 
-        WHEN (TestsWithMetadata.Days_Touched - 1) + ISNULL(gcf_errors.GCF_Errors_Days, 0) = 0
+        WHEN (Days_Touched - 1) + ISNULL(gcf_errors.GCF_Errors_Days, 0) = 0
         THEN 'No Error/FGA'
         ELSE 'TF'
     END AS Error_Status,
@@ -145,6 +148,7 @@ FROM (
             WHERE d.Program = 'DELL_MEM'
               AND d.MachineName = 'FICORE'
               AND d.Result NOT IN ('NA', 'ABORT', 'CANCELLED', 'aborted', '')  -- Exclude incomplete
+              AND d.SerialNumber = '104YXB4'  -- Filter for this serial
         ) AS ate
       
     ) AS tdr
@@ -173,9 +177,7 @@ FROM (
 LEFT JOIN (
     -- GCF Errors: Count distinct days with errors (like Days_Touched)
     -- Exclude messages that say "Msg Sent Ok" even if Processed = 'F'
-    -- IMPORTANT: Must filter by serial number (Customer_order_No) to match correct serial
     SELECT 
-        obm.Customer_order_No AS SerialNumber,
         CAST(obm.Insert_Date AS DATE) AS Test_Date,
         1 AS GCF_Errors_Days  -- 1 = day has errors, 0 = no errors (handled by ISNULL)
     FROM Biztalk.dbo.Outmessage_hdr obm
@@ -184,9 +186,9 @@ LEFT JOIN (
       AND obm.Message_Type IN ('DellARB-GCF_V4', 'DellARB-GCF_V3')
       AND obm.Processed = 'F'
       AND LOWER(obm.Message) NOT LIKE '%msg sent ok%'  -- Exclude success messages that are marked as 'F'
-    GROUP BY obm.Customer_order_No, CAST(obm.Insert_Date AS DATE)
-) AS gcf_errors ON TestsWithMetadata.SerialNumber = gcf_errors.SerialNumber
-    AND TestsWithMetadata.First_Test_Date = gcf_errors.Test_Date
+      AND obm.Customer_order_No = '104YXB4'  -- Filter for this serial
+    GROUP BY CAST(obm.Insert_Date AS DATE)
+) AS gcf_errors ON TestsWithMetadata.First_Test_Date = gcf_errors.Test_Date
 
 -- Location Information Join (INNER JOIN to filter to only matching serials)
 INNER JOIN (
@@ -222,6 +224,7 @@ INNER JOIN (
         ) pt_loc ON pt_loc.SerialNo = ps_loc.SerialNo 
             AND pt_loc.ProgramID = ps_loc.ProgramID
     WHERE ps_loc.ProgramID = 10053
+      AND ps_loc.SerialNo = '104YXB4'  -- Filter for this serial
       AND (
           -- Current location matches criteria
           UPPER(pl_loc.LocationNo) = UPPER('FinishedGoods.ARB.0.0.0')
@@ -230,8 +233,7 @@ INNER JOIN (
           -- OR has matching transaction
           OR pt_loc.SerialNo IS NOT NULL
       )
-) AS loc_info ON loc_info.SerialNo = TestsWithMetadata.SerialNumber 
-    AND loc_info.rn = 1  -- Get most recent transaction
-
+) loc_info ON loc_info.SerialNo = TestsWithMetadata.SerialNumber 
+    AND loc_info.rn = 1;  -- Get most recent transaction
 
 

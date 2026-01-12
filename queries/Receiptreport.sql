@@ -1,18 +1,42 @@
+/* =====================================================================================
+   PERF NOTE (logic unchanged):
+   This report was slow mainly because it repeatedly JOINed CodeAttribute inside multiple
+   OUTER APPLY blocks (per row). We resolve AttributeIDs once, then pivot by AttributeID.
+   ===================================================================================== */
+
+-- NOTE: Removed unit-attribute output columns for performance (Mac/IMEI/Battery/Wipe/TechID/DateCode).
+-- We keep only the attribute IDs still required for the existing disposition/warranty logic.
+DECLARE @Attr_WARRANTY_STATUS INT = (SELECT TOP 1 ID FROM Plus.pls.CodeAttribute WHERE UPPER(AttributeName) = 'WARRANTY_STATUS');
+DECLARE @Attr_DISPOSITION     INT = (SELECT TOP 1 ID FROM Plus.pls.CodeAttribute WHERE UPPER(AttributeName) = 'DISPOSITION');
+
+DECLARE @Attr_FLAGGED_BOXES   INT = (SELECT TOP 1 ID FROM Plus.pls.CodeAttribute WHERE UPPER(AttributeName) = 'FLAGGED_BOXES');
+DECLARE @Attr_CUSTOMERTYPE    INT = (SELECT TOP 1 ID FROM Plus.pls.CodeAttribute WHERE UPPER(AttributeName) = 'CUSTOMERTYPE');
+DECLARE @Attr_RETURNTYPE      INT = (SELECT TOP 1 ID FROM Plus.pls.CodeAttribute WHERE UPPER(AttributeName) = 'RETURNTYPE');
+DECLARE @Attr_TOTAL_UNITS     INT = (SELECT TOP 1 ID FROM Plus.pls.CodeAttribute WHERE UPPER(AttributeName) = 'TOTAL_UNITS');
+DECLARE @Attr_BRANCHES        INT = (SELECT TOP 1 ID FROM Plus.pls.CodeAttribute WHERE UPPER(AttributeName) = 'BRANCHES');
+
+DECLARE @Attr_WARRANTY_TERM   INT = (SELECT TOP 1 ID FROM Plus.pls.CodeAttribute WHERE UPPER(AttributeName) = 'WARRANTY_TERM');
+DECLARE @Attr_COST            INT = (SELECT TOP 1 ID FROM Plus.pls.CodeAttribute WHERE UPPER(AttributeName) = 'COST');
+
+-- Date window (keep CreateDate sargable: no CAST on rec.CreateDate)
+DECLARE @StartDate DATETIME2(0) = '2025-11-01 00:00:00';
+DECLARE @EndDateExclusive DATETIME2(0) = '2025-12-01 00:00:00';
+
+-- Resolve RO-RECEIVE transaction type once (avoid join to CodePartTransaction)
+DECLARE @RO_RECEIVE_ID INT = (
+    SELECT TOP 1 ID
+    FROM Plus.pls.CodePartTransaction
+    WHERE UPPER([Description]) = 'RO-RECEIVE'
+);
 
 SELECT 
     rec.CreateDate AS "Date Received",
     dl.TrackingNo AS "Tracking Number",
     rec.CustomerReference AS ASN,
     FlgBx.FlgBx AS "Flagged Box",
-    COALESCE(prsr.tch,rosr.tch) AS "Tech ID",
     CASE WHEN SUBSTRING(Branch.Value,1,1)='0' THEN SUBSTRING(Branch.Value,2,10) ELSE Branch.Value END AS "Branch ID",
     rec.PartNo AS "Part No",
     rec.SerialNo AS "Serial No",
-    COALESCE(prsr.Mac,rosr.Mac) AS Mac,
-    COALESCE(prsr.IMEI,rosr.IMEI) AS IMEI,
-    COALESCE(prsr.Battery,rosr.Battery) AS "Battery Removal",
-    COALESCE(prsr.GoogleWipe,rosr.GoogleWipe) AS "Google Wipe",
-    COALESCE(prsr.dtcd,rosr.dtcd) AS "Date Code",
     dl.ID AS "Dock Log ID",
     CASE
       WHEN COALESCE(clean.CleanWarrantyStatus, '') IN ('IN WARRANTY','IW','IN_WARRANTY') THEN 'RMA'
@@ -34,7 +58,6 @@ SELECT
     END AS Cost
 
 FROM Plus.pls.PartTransaction AS rec
-JOIN Plus.pls.CodePartTransaction AS rcd ON rcd.ID = rec.PartTransactionID
 JOIN Plus.pls.ROHeader AS rh ON rh.ID = rec.OrderHeaderID
 JOIN Plus.pls.CodeAddress AS adr ON adr.ID = rh.AddressID
 JOIN Plus.pls.CodeAddressDetails AS adt ON adt.AddressID = adr.ID
@@ -44,66 +67,49 @@ JOIN Plus.pls.PartSerial AS ps
   ON ps.ProgramID = rec.ProgramID AND ps.PartNo = rec.PartNo AND ps.SerialNo = rec.SerialNo AND ps.ROHeaderID = rh.ID
 OUTER APPLY (
     SELECT psa.PartSerialID,
-           MAX(CASE WHEN wsa.AttributeName='MacAddress'       THEN Value END) AS Mac,
-           MAX(CASE WHEN wsa.AttributeName='IMEI'             THEN Value END) AS IMEI,
-           MAX(CASE WHEN wsa.AttributeName='BATTERY'          THEN Value END) AS Battery,
-           MAX(CASE WHEN wsa.AttributeName='WARRANTY_STATUS'  THEN Value END) AS WarrantyStatus,
-           MAX(CASE WHEN wsa.AttributeName='DISPOSITION'      THEN Value END) AS SerialDisposition,
-           MAX(CASE WHEN wsa.AttributeName='WIPE'             THEN Value END) AS GoogleWipe,
-           MAX(CASE WHEN wsa.AttributeName='TECH_ID'          THEN Value END) AS tch,
-           MAX(CASE WHEN wsa.AttributeName='DATE_CODE'        THEN Value END) AS dtcd
+           MAX(CASE WHEN psa.AttributeID = @Attr_WARRANTY_STATUS THEN psa.Value END) AS WarrantyStatus,
+           MAX(CASE WHEN psa.AttributeID = @Attr_DISPOSITION     THEN psa.Value END) AS SerialDisposition
     FROM Plus.pls.PartSerialAttribute AS psa
-    JOIN Plus.pls.CodeAttribute AS wsa
-      ON wsa.ID = psa.AttributeID
-     AND wsa.AttributeName IN ('WARRANTY_STATUS','MacAddress','BATTERY','IMEI','DISPOSITION','WIPE','TECH_ID','DATE_CODE')
     WHERE psa.PartSerialID = ps.ID
+      AND psa.AttributeID IN (@Attr_WARRANTY_STATUS,@Attr_DISPOSITION)
     GROUP BY psa.PartSerialID
 ) AS prsr
 OUTER APPLY (
     SELECT ru.ID AS ROUnitID,
-           MAX(CASE WHEN wsa.AttributeName='MacAddress'       THEN Value END) AS Mac,
-           MAX(CASE WHEN wsa.AttributeName='IMEI'             THEN Value END) AS IMEI,
-           MAX(CASE WHEN wsa.AttributeName='BATTERY'          THEN Value END) AS Battery,
-           MAX(CASE WHEN wsa.AttributeName='WARRANTY_STATUS'  THEN Value END) AS WarrantyStatus,
-           MAX(CASE WHEN wsa.AttributeName='DISPOSITION'      THEN Value END) AS SerialDisposition,
-           MAX(CASE WHEN wsa.AttributeName='WIPE'             THEN Value END) AS GoogleWipe,
-           MAX(CASE WHEN wsa.AttributeName='TECH_ID'          THEN Value END) AS tch,
-           MAX(CASE WHEN wsa.AttributeName='DATE_CODE'        THEN Value END) AS dtcd
+           MAX(CASE WHEN rua.AttributeID = @Attr_WARRANTY_STATUS THEN rua.Value END) AS WarrantyStatus,
+           MAX(CASE WHEN rua.AttributeID = @Attr_DISPOSITION     THEN rua.Value END) AS SerialDisposition
     FROM Plus.pls.ROLine rl 
     JOIN Plus.pls.ROUnit ru ON ru.ROLineID = rl.ID AND ru.SerialNo = ps.SerialNo
     JOIN Plus.pls.ROUnitAttribute rua ON rua.ROUnitID = ru.ID 
-    JOIN Plus.pls.CodeAttribute AS wsa ON wsa.ID = rua.AttributeID 
-     AND wsa.AttributeName IN ('WARRANTY_STATUS','MacAddress','BATTERY','IMEI','DISPOSITION','WIPE','TECH_ID','DATE_CODE')
     WHERE rl.ROHeaderID = rh.ID  AND rl.ID = rec.OrderLineID 
+      AND rua.AttributeID IN (@Attr_WARRANTY_STATUS,@Attr_DISPOSITION)
     GROUP BY ru.ID 
 ) AS rosr
 OUTER APPLY (
     SELECT fb.ROHeaderID,
-    MAX(CASE WHEN fbtt.AttributeName = 'FLAGGED_BOXES' AND fb.Value='NO' THEN 'Good' ELSE 'Bad' END) AS FlgBx,
-    MAX(CASE WHEN fbtt.AttributeName = 'CUSTOMERTYPE' THEN fb.Value ELSE NULL END) AS CustType,
-    MAX(CASE WHEN fbtt.AttributeName = 'RETURNTYPE' THEN fb.Value ELSE NULL END) AS ReturnType,
-    MAX(CASE WHEN fbtt.AttributeName = 'TOTAL_UNITS' THEN fb.Value ELSE NULL END) AS TotalUnits
+    MAX(CASE WHEN fb.AttributeID = @Attr_FLAGGED_BOXES AND fb.Value='NO' THEN 'Good' ELSE 'Bad' END) AS FlgBx,
+    MAX(CASE WHEN fb.AttributeID = @Attr_CUSTOMERTYPE THEN fb.Value ELSE NULL END) AS CustType,
+    MAX(CASE WHEN fb.AttributeID = @Attr_RETURNTYPE THEN fb.Value ELSE NULL END) AS ReturnType,
+    MAX(CASE WHEN fb.AttributeID = @Attr_TOTAL_UNITS THEN fb.Value ELSE NULL END) AS TotalUnits
     FROM Plus.pls.ROHeaderAttribute AS fb
-    JOIN Plus.pls.CodeAttribute AS fbtt ON fbtt.ID = fb.AttributeID AND fbtt.AttributeName IN ('FLAGGED_BOXES','CUSTOMERTYPE','RETURNTYPE','TOTAL_UNITS')
     WHERE fb.ROHeaderID = rh.ID
+      AND fb.AttributeID IN (@Attr_FLAGGED_BOXES,@Attr_CUSTOMERTYPE,@Attr_RETURNTYPE,@Attr_TOTAL_UNITS)
     GROUP BY fb.ROHeaderID 
 ) AS FlgBx
 OUTER APPLY (
     SELECT brc.Value
     FROM Plus.pls.CodeAddressDetailsAttribute AS brc
-    JOIN Plus.pls.CodeAttribute AS brca ON brca.ID = brc.AttributeID AND brca.AttributeName = 'BRANCHES'
     WHERE brc.AddressDetailID = adt.ID
+      AND brc.AttributeID = @Attr_BRANCHES
 ) AS Branch
 OUTER APPLY (
     SELECT dc.PartNo,
-           MAX(CASE WHEN dctt.AttributeName='WARRANTY_TERM' THEN Value END) AS DateCode,
-           MAX(CASE WHEN dctt.AttributeName='DISPOSITION'   THEN Value END) AS PartDisposition,
-           MAX(CASE WHEN dctt.AttributeName='Cost' THEN Value END) AS Cost
+           MAX(CASE WHEN dc.AttributeID = @Attr_WARRANTY_TERM THEN dc.Value END) AS DateCode,
+           MAX(CASE WHEN dc.AttributeID = @Attr_DISPOSITION   THEN dc.Value END) AS PartDisposition,
+           MAX(CASE WHEN dc.AttributeID = @Attr_COST          THEN dc.Value END) AS Cost
     FROM Plus.pls.PartNoAttribute AS dc
-    JOIN Plus.pls.CodeAttribute AS dctt
-      ON dctt.ID = dc.AttributeID
-     AND dctt.AttributeName IN ('WARRANTY_TERM','DISPOSITION','Cost')
     WHERE dc.PartNo = prt.PartNo AND dc.ProgramID = rec.ProgramID
+      AND dc.AttributeID IN (@Attr_WARRANTY_TERM,@Attr_DISPOSITION,@Attr_COST)
     GROUP BY dc.PartNo
 ) AS prtatt
 /* CLEAN ONCE, USE EVERYWHERE */
@@ -118,9 +124,10 @@ OUTER APPLY (
         NULLIF(UPPER(LTRIM(RTRIM(REPLACE(REPLACE(REPLACE(prtatt.PartDisposition, CHAR(9), ' '), CHAR(10), ' '), CHAR(13), ' ')))),'')
 ) AS clean
 WHERE rec.ProgramID IN (10068, 10072) 
-  AND rec.PartTransactionID = 1
-  AND rcd.Description = 'RO-RECEIVE'
+  AND rec.PartTransactionID = @RO_RECEIVE_ID
   AND adt.AddressType = 'ShipFrom'
+  AND rec.CreateDate >= @StartDate
+  AND rec.CreateDate <  @EndDateExclusive
 
 UNION
 
@@ -130,15 +137,9 @@ SELECT
     dl.TrackingNo AS "Tracking Number",
     rec.CustomerReference AS ASN,
     FlgBx.FlgBx AS "Flagged Box",
-    COALESCE(prsr.tch,rosr.tch) AS "Tech ID",
     CASE WHEN SUBSTRING(Branch.Value,1,1)='0' THEN SUBSTRING(Branch.Value,2,10) ELSE Branch.Value END AS "Branch ID",
     rec.PartNo AS "Part No",
     rec.SerialNo AS "Serial No",
-    COALESCE(prsr.Mac,rosr.Mac) AS Mac,
-    COALESCE(prsr.IMEI,rosr.IMEI) AS IMEI,
-    COALESCE(prsr.Battery,rosr.Battery) AS "Battery Removal",
-    COALESCE(prsr.GoogleWipe,rosr.GoogleWipe) AS "Google Wipe",
-    COALESCE(prsr.dtcd,rosr.dtcd) AS "Date Code",
     dl.ID AS "Dock Log ID",
     CASE
       WHEN COALESCE(clean.CleanWarrantyStatus, '') IN ('IN WARRANTY','IW','IN_WARRANTY') THEN 'RMA'
@@ -160,7 +161,6 @@ SELECT
     END AS Cost
 
 FROM Plus.pls.PartTransaction AS rec
-JOIN Plus.pls.CodePartTransaction AS rcd ON rcd.ID = rec.PartTransactionID
 JOIN Plus.pls.ROHeader AS rh ON rh.ID = rec.OrderHeaderID
 JOIN Plus.pls.CodeAddress AS adr ON adr.ID = rh.AddressID
 JOIN Plus.pls.CodeAddressDetails AS adt ON adt.AddressID = adr.ID
@@ -170,66 +170,49 @@ JOIN Plus.pls.PartSerialHistory AS ps
 JOIN Plus.pls.PartNo AS prt ON prt.PartNo = rec.PartNo
 OUTER APPLY (
     SELECT fb.ROHeaderID,
-    MAX(CASE WHEN fbtt.AttributeName = 'FLAGGED_BOXES' AND fb.Value='NO' THEN 'Good' ELSE 'Bad' END) AS FlgBx,
-    MAX(CASE WHEN fbtt.AttributeName = 'CUSTOMERTYPE' THEN fb.Value ELSE NULL END) AS CustType,
-    MAX(CASE WHEN fbtt.AttributeName = 'RETURNTYPE' THEN fb.Value ELSE NULL END) AS ReturnType,
-    MAX(CASE WHEN fbtt.AttributeName = 'TOTAL_UNITS' THEN fb.Value ELSE NULL END) AS TotalUnits
+    MAX(CASE WHEN fb.AttributeID = @Attr_FLAGGED_BOXES AND fb.Value='NO' THEN 'Good' ELSE 'Bad' END) AS FlgBx,
+    MAX(CASE WHEN fb.AttributeID = @Attr_CUSTOMERTYPE THEN fb.Value ELSE NULL END) AS CustType,
+    MAX(CASE WHEN fb.AttributeID = @Attr_RETURNTYPE THEN fb.Value ELSE NULL END) AS ReturnType,
+    MAX(CASE WHEN fb.AttributeID = @Attr_TOTAL_UNITS THEN fb.Value ELSE NULL END) AS TotalUnits
     FROM Plus.pls.ROHeaderAttribute AS fb
-    JOIN Plus.pls.CodeAttribute AS fbtt ON fbtt.ID = fb.AttributeID AND fbtt.AttributeName IN ('FLAGGED_BOXES','CUSTOMERTYPE','RETURNTYPE','TOTAL_UNITS')
     WHERE fb.ROHeaderID = rh.ID
+      AND fb.AttributeID IN (@Attr_FLAGGED_BOXES,@Attr_CUSTOMERTYPE,@Attr_RETURNTYPE,@Attr_TOTAL_UNITS)
     GROUP BY fb.ROHeaderID 
 ) AS FlgBx
 OUTER APPLY (
     SELECT brc.Value
     FROM Plus.pls.CodeAddressDetailsAttribute AS brc
-    JOIN Plus.pls.CodeAttribute AS brca ON brca.ID = brc.AttributeID AND brca.AttributeName = 'BRANCHES'
     WHERE brc.AddressDetailID = adt.ID
+      AND brc.AttributeID = @Attr_BRANCHES
 ) AS Branch
 OUTER APPLY (
     SELECT psa.PartSerialHistoryID,
-           MAX(CASE WHEN wsa.AttributeName='MacAddress'       THEN Value END) AS Mac,
-           MAX(CASE WHEN wsa.AttributeName='IMEI'             THEN Value END) AS IMEI,
-           MAX(CASE WHEN wsa.AttributeName='BATTERY'          THEN Value END) AS Battery,
-           MAX(CASE WHEN wsa.AttributeName='WARRANTY_STATUS'  THEN Value END) AS WarrantyStatus,
-           MAX(CASE WHEN wsa.AttributeName='DISPOSITION'      THEN Value END) AS SerialDisposition,
-           MAX(CASE WHEN wsa.AttributeName='WIPE'             THEN Value END) AS GoogleWipe,
-           MAX(CASE WHEN wsa.AttributeName='TECH_ID'          THEN Value END) AS tch,
-           MAX(CASE WHEN wsa.AttributeName='DATE_CODE'        THEN Value END) AS dtcd
+           MAX(CASE WHEN psa.AttributeID = @Attr_WARRANTY_STATUS THEN psa.Value END) AS WarrantyStatus,
+           MAX(CASE WHEN psa.AttributeID = @Attr_DISPOSITION     THEN psa.Value END) AS SerialDisposition
     FROM Plus.pls.PartSerialAttributeHistory AS psa
-    JOIN Plus.pls.CodeAttribute AS wsa
-      ON wsa.ID = psa.AttributeID
-     AND wsa.AttributeName IN ('WARRANTY_STATUS','MacAddress','BATTERY','IMEI','DISPOSITION','WIPE','TECH_ID','DATE_CODE')
     WHERE psa.PartSerialHistoryID = ps.ID
+      AND psa.AttributeID IN (@Attr_WARRANTY_STATUS,@Attr_DISPOSITION)
     GROUP BY psa.PartSerialHistoryID
 ) AS prsr
 OUTER APPLY (
     SELECT ru.ID AS ROUnitID,
-           MAX(CASE WHEN wsa.AttributeName='MacAddress'       THEN Value END) AS Mac,
-           MAX(CASE WHEN wsa.AttributeName='IMEI'             THEN Value END) AS IMEI,
-           MAX(CASE WHEN wsa.AttributeName='BATTERY'          THEN Value END) AS Battery,
-           MAX(CASE WHEN wsa.AttributeName='WARRANTY_STATUS'  THEN Value END) AS WarrantyStatus,
-           MAX(CASE WHEN wsa.AttributeName='DISPOSITION'      THEN Value END) AS SerialDisposition,
-           MAX(CASE WHEN wsa.AttributeName='WIPE'             THEN Value END) AS GoogleWipe,
-           MAX(CASE WHEN wsa.AttributeName='TECH_ID'          THEN Value END) AS tch,
-           MAX(CASE WHEN wsa.AttributeName='DATE_CODE'        THEN Value END) AS dtcd
+           MAX(CASE WHEN rua.AttributeID = @Attr_WARRANTY_STATUS THEN rua.Value END) AS WarrantyStatus,
+           MAX(CASE WHEN rua.AttributeID = @Attr_DISPOSITION     THEN rua.Value END) AS SerialDisposition
     FROM Plus.pls.ROLine rl 
     JOIN Plus.pls.ROUnit ru ON ru.ROLineID = rl.ID AND ru.SerialNo = ps.SerialNo
     JOIN Plus.pls.ROUnitAttribute rua ON rua.ROUnitID = ru.ID 
-    JOIN Plus.pls.CodeAttribute AS wsa ON wsa.ID = rua.AttributeID 
-     AND wsa.AttributeName IN ('WARRANTY_STATUS','MacAddress','BATTERY','IMEI','DISPOSITION','WIPE','TECH_ID','DATE_CODE')
     WHERE rl.ROHeaderID = rh.ID AND rl.ID = rec.OrderLineID
+      AND rua.AttributeID IN (@Attr_WARRANTY_STATUS,@Attr_DISPOSITION)
     GROUP BY ru.ID 
 ) AS rosr
 OUTER APPLY (
     SELECT dc.PartNo,
-           MAX(CASE WHEN dctt.AttributeName='WARRANTY_TERM' THEN Value END) AS DateCode,
-           MAX(CASE WHEN dctt.AttributeName='DISPOSITION'   THEN Value END) AS PartDisposition,
-           MAX(CASE WHEN dctt.AttributeName='Cost' THEN Value END) AS Cost
+           MAX(CASE WHEN dc.AttributeID = @Attr_WARRANTY_TERM THEN dc.Value END) AS DateCode,
+           MAX(CASE WHEN dc.AttributeID = @Attr_DISPOSITION   THEN dc.Value END) AS PartDisposition,
+           MAX(CASE WHEN dc.AttributeID = @Attr_COST          THEN dc.Value END) AS Cost
     FROM Plus.pls.PartNoAttribute AS dc
-    JOIN Plus.pls.CodeAttribute AS dctt
-      ON dctt.ID = dc.AttributeID
-     AND dctt.AttributeName IN ('WARRANTY_TERM','DISPOSITION','Cost')
     WHERE dc.PartNo = prt.PartNo AND dc.ProgramID = rec.ProgramID
+      AND dc.AttributeID IN (@Attr_WARRANTY_TERM,@Attr_DISPOSITION,@Attr_COST)
     GROUP BY dc.PartNo
 ) AS prtatt
 /* CLEAN ONCE, USE EVERYWHERE */
@@ -243,9 +226,10 @@ SELECT
         NULLIF(UPPER(LTRIM(RTRIM(REPLACE(REPLACE(REPLACE(prtatt.PartDisposition, CHAR(9), ' '), CHAR(10), ' '), CHAR(13), ' ')))),'')
 ) AS clean
 WHERE rec.ProgramID IN (10068, 10072)
-  AND rec.PartTransactionID = 1
-  AND rcd.Description = 'RO-RECEIVE'
+  AND rec.PartTransactionID = @RO_RECEIVE_ID
   AND adt.AddressType = 'ShipFrom'
+  AND rec.CreateDate >= @StartDate
+  AND rec.CreateDate <  @EndDateExclusive
 
 UNION ALL 
 
@@ -254,15 +238,9 @@ SELECT
     dl.TrackingNo AS "Tracking Number",
     rec.CustomerReference AS ASN,
     FlgBx.FlgBx AS "Flagged Box",
-    prsr.tch AS "Tech ID",
     CASE WHEN SUBSTRING(Branch.Value,1,1)='0' THEN SUBSTRING(Branch.Value,2,10) ELSE Branch.Value END AS "Branch ID",
     rec.PartNo AS "Part No",
     rec.SerialNo AS "Serial No",
-    prsr.Mac AS Mac,
-    prsr.IMEI AS IMEI,
-    prsr.Battery AS "Battery Removal",
-    prsr.GoogleWipe AS "Google Wipe",
-    prsr.dtcd AS "Date Code",
     dl.ID AS "Dock Log ID",
     CASE
       WHEN COALESCE(clean.CleanWarrantyStatus, '') IN ('IN WARRANTY','IW','IN_WARRANTY') THEN 'RMA'
@@ -295,50 +273,40 @@ JOIN Plus.pls.ROLine AS rl ON rl.ROHeaderID = rh.ID AND rl.PartNo = rec.PartNo A
 CROSS APPLY (
 
     SELECT ru.ID AS ROUnitID,
-           MAX(CASE WHEN wsa.AttributeName='MacAddress'       THEN Value END) AS Mac,
-           MAX(CASE WHEN wsa.AttributeName='IMEI'             THEN Value END) AS IMEI,
-           MAX(CASE WHEN wsa.AttributeName='BATTERY'          THEN Value END) AS Battery,
-           MAX(CASE WHEN wsa.AttributeName='WARRANTY_STATUS'  THEN Value END) AS WarrantyStatus,
-           MAX(CASE WHEN wsa.AttributeName='DISPOSITION'      THEN Value END) AS SerialDisposition,
-           MAX(CASE WHEN wsa.AttributeName='WIPE'             THEN Value END) AS GoogleWipe,
-           MAX(CASE WHEN wsa.AttributeName='TECH_ID'          THEN Value END) AS tch,
-           MAX(CASE WHEN wsa.AttributeName='DATE_CODE'        THEN Value END) AS dtcd
+           MAX(CASE WHEN rua.AttributeID = @Attr_WARRANTY_STATUS THEN rua.Value END) AS WarrantyStatus,
+           MAX(CASE WHEN rua.AttributeID = @Attr_DISPOSITION     THEN rua.Value END) AS SerialDisposition
 
     FROM Plus.pls.ROUnit ru 
     JOIN Plus.pls.ROUnitAttribute rua ON rua.ROUnitID = ru.ID 
-    JOIN Plus.pls.CodeAttribute AS wsa ON wsa.ID = rua.AttributeID 
-
-     AND wsa.AttributeName IN ('WARRANTY_STATUS','MacAddress','BATTERY','IMEI','DISPOSITION','WIPE','TECH_ID','DATE_CODE')
     WHERE ru.ROLineID = rl.ID AND ru.SerialNo = rec.SerialNo
+      AND rua.AttributeID IN (@Attr_WARRANTY_STATUS,@Attr_DISPOSITION)
     GROUP BY ru.ID 
 ) AS prsr
 OUTER APPLY (
     SELECT fb.ROHeaderID,
-    MAX(CASE WHEN fbtt.AttributeName = 'FLAGGED_BOXES' AND fb.Value='NO' THEN 'Good' ELSE 'Bad' END) AS FlgBx,
-    MAX(CASE WHEN fbtt.AttributeName = 'CUSTOMERTYPE' THEN fb.Value ELSE NULL END) AS CustType,
-    MAX(CASE WHEN fbtt.AttributeName = 'RETURNTYPE' THEN fb.Value ELSE NULL END) AS ReturnType,
-    MAX(CASE WHEN fbtt.AttributeName = 'TOTAL_UNITS' THEN fb.Value ELSE NULL END) AS TotalUnits
+    MAX(CASE WHEN fb.AttributeID = @Attr_FLAGGED_BOXES AND fb.Value='NO' THEN 'Good' ELSE 'Bad' END) AS FlgBx,
+    MAX(CASE WHEN fb.AttributeID = @Attr_CUSTOMERTYPE THEN fb.Value ELSE NULL END) AS CustType,
+    MAX(CASE WHEN fb.AttributeID = @Attr_RETURNTYPE THEN fb.Value ELSE NULL END) AS ReturnType,
+    MAX(CASE WHEN fb.AttributeID = @Attr_TOTAL_UNITS THEN fb.Value ELSE NULL END) AS TotalUnits
     FROM Plus.pls.ROHeaderAttribute AS fb
-    JOIN Plus.pls.CodeAttribute AS fbtt ON fbtt.ID = fb.AttributeID AND fbtt.AttributeName IN ('FLAGGED_BOXES','CUSTOMERTYPE','RETURNTYPE','TOTAL_UNITS')
     WHERE fb.ROHeaderID = rh.ID
+      AND fb.AttributeID IN (@Attr_FLAGGED_BOXES,@Attr_CUSTOMERTYPE,@Attr_RETURNTYPE,@Attr_TOTAL_UNITS)
     GROUP BY fb.ROHeaderID 
 ) AS FlgBx
 OUTER APPLY (
     SELECT brc.Value
     FROM Plus.pls.CodeAddressDetailsAttribute AS brc
-    JOIN Plus.pls.CodeAttribute AS brca ON brca.ID = brc.AttributeID AND brca.AttributeName = 'BRANCHES'
     WHERE brc.AddressDetailID = adt.ID
+      AND brc.AttributeID = @Attr_BRANCHES
 ) AS Branch
 OUTER APPLY (
     SELECT dc.PartNo,
-           MAX(CASE WHEN dctt.AttributeName='WARRANTY_TERM' THEN Value END) AS DateCode,
-           MAX(CASE WHEN dctt.AttributeName='DISPOSITION'   THEN Value END) AS PartDisposition,
-           MAX(CASE WHEN dctt.AttributeName='Cost' THEN Value END) AS Cost
+           MAX(CASE WHEN dc.AttributeID = @Attr_WARRANTY_TERM THEN dc.Value END) AS DateCode,
+           MAX(CASE WHEN dc.AttributeID = @Attr_DISPOSITION   THEN dc.Value END) AS PartDisposition,
+           MAX(CASE WHEN dc.AttributeID = @Attr_COST          THEN dc.Value END) AS Cost
     FROM Plus.pls.PartNoAttribute AS dc
-    JOIN Plus.pls.CodeAttribute AS dctt
-      ON dctt.ID = dc.AttributeID
-     AND dctt.AttributeName IN ('WARRANTY_TERM','DISPOSITION','Cost')
     WHERE dc.PartNo = prt.PartNo AND dc.ProgramID = rec.ProgramID
+      AND dc.AttributeID IN (@Attr_WARRANTY_TERM,@Attr_DISPOSITION,@Attr_COST)
     GROUP BY dc.PartNo
 ) AS prtatt
 /* CLEAN ONCE, USE EVERYWHERE */
@@ -354,7 +322,8 @@ OUTER APPLY (
 ) AS clean
 
 WHERE rec.ProgramID IN (10068, 10072) 
-  AND rec.PartTransactionID = 1
-  AND rcd.Description = 'RO-RECEIVE'
+  AND rec.PartTransactionID = @RO_RECEIVE_ID
   AND adt.AddressType = 'ShipFrom'
   AND rec.SerialNo = '*'
+  AND rec.CreateDate >= @StartDate
+  AND rec.CreateDate <  @EndDateExclusive

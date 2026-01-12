@@ -1,8 +1,8 @@
 SELECT 
     ps.*,
     CASE 
-        WHEN UPPER(LTRIM(RTRIM(pl.Warehouse))) = 'TEARDOWN' THEN 'Teardown'
-        WHEN UPPER(LTRIM(RTRIM(pl.Warehouse))) = 'TAGTORNDOWN' THEN 'TagTornDown'
+        WHEN UPPER(LTRIM(RTRIM(pl.Warehouse))) = 'TEARDOWN' THEN ' Teardown BackLog'
+        WHEN UPPER(LTRIM(RTRIM(pl.Warehouse))) = 'TAGTORNDOWN' THEN 'Torn Down'
         ELSE UPPER(LTRIM(RTRIM(pl.Warehouse)))
     END AS Warehouse,
     pl.LocationNo AS PartLocationNo,

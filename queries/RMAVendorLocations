@@ -1,0 +1,119 @@
+-- ============================================
+-- ALL PARTS AND QUANTITIES IN OEM LOCATIONS (MONDAY TO FRIDAY OF CURRENT WEEK)
+-- WITH VENDOR MAPPING FROM VENDORLOCATION TABLE
+-- ProgramID: 10068 (ADT)
+-- ============================================
+-- TESTING: Change @WeeksBack to 1 for last week, 0 for current week
+DECLARE @WeeksBack INT = 0;  -- 0 = current week, 1 = last week, 2 = two weeks ago, etc.
+
+-- UNCOMMENT BELOW TO VERIFY DATE RANGE (run this separately to see what dates are being used)
+/*
+SELECT 
+    DATEADD(WEEK, -@WeeksBack, DATEADD(DAY, -(DATEPART(WEEKDAY, GETDATE()) + 5) % 7, CAST(GETDATE() AS DATE))) AS WeekMonday,
+    DATEADD(DAY, 4, DATEADD(WEEK, -@WeeksBack, DATEADD(DAY, -(DATEPART(WEEKDAY, GETDATE()) + 5) % 7, CAST(GETDATE() AS DATE)))) AS WeekFriday,
+    GETDATE() AS CurrentDate,
+    DATENAME(WEEKDAY, GETDATE()) AS CurrentDayName;
+*/
+
+WITH WeekDates AS (
+    -- Calculate Monday and Friday of specified week
+    -- Monday: Go back to the most recent Monday (or previous week's Monday if today is weekend)
+    -- Then subtract @WeeksBack weeks for testing
+    SELECT 
+        DATEADD(WEEK, -@WeeksBack, DATEADD(DAY, -(DATEPART(WEEKDAY, GETDATE()) + 5) % 7, CAST(GETDATE() AS DATE))) AS WeekMonday,
+        DATEADD(DAY, 4, DATEADD(WEEK, -@WeeksBack, DATEADD(DAY, -(DATEPART(WEEKDAY, GETDATE()) + 5) % 7, CAST(GETDATE() AS DATE)))) AS WeekFriday
+),
+VendorLocationMapping AS (
+    -- Get one vendor per location (most recent record)
+    SELECT 
+        LocationNo,
+        Vendor,
+        Status,
+        LastActivityDate,
+        ID
+    FROM (
+        SELECT 
+            cgt.C03 AS LocationNo,
+            cgt.C01 AS Vendor,
+            cs.Description AS Status,
+            cgt.LastActivityDate,
+            cgt.ID,
+            -- Rank records by most recent activity, then by ID (for tie-breaking)
+            ROW_NUMBER() OVER (
+                PARTITION BY cgt.C03 
+                ORDER BY cgt.LastActivityDate DESC, cgt.ID DESC
+            ) AS RowNum
+        FROM Plus.pls.CodeGenericTable cgt
+            LEFT JOIN Plus.pls.CodeStatus cs ON cs.ID = cgt.StatusID
+        WHERE cgt.GenericTableDefinitionID = 247  -- VENDORLOCATION
+            AND cgt.C03 IS NOT NULL  -- Only locations with LocationNo
+            AND cgt.C01 IS NOT NULL  -- Only records with Vendor
+    ) AS RankedVendors
+    WHERE RowNum = 1  -- Only the most recent vendor per location
+),
+VendorContacts AS (
+    -- Get vendor contact information (Email and Type)
+    -- C01 = Vendor, C02 = Email, C03 = Type
+    -- Matches on Vendor name from VENDORLOCATION table
+    -- Only get "Request" contact type (not Follow-up)
+    -- If multiple Request contacts exist for same vendor, get most recent one
+    SELECT 
+        Vendor,
+        Email,
+        ContactType,
+        Status,
+        LastActivityDate
+    FROM (
+        SELECT 
+            cgt.C01 AS Vendor,
+            cgt.C02 AS Email,
+            cgt.C03 AS ContactType,
+            cs.Description AS Status,
+            cgt.LastActivityDate,
+            cgt.ID,
+            -- Rank records by most recent activity, then by ID (for tie-breaking)
+            ROW_NUMBER() OVER (
+                PARTITION BY cgt.C01 
+                ORDER BY cgt.LastActivityDate DESC, cgt.ID DESC
+            ) AS RowNum
+        FROM Plus.pls.CodeGenericTable cgt
+            LEFT JOIN Plus.pls.CodeStatus cs ON cs.ID = cgt.StatusID
+        WHERE cgt.GenericTableDefinitionID = 245  -- VENDOR_CONTACTS
+            AND cgt.C01 IS NOT NULL  -- Only records with Vendor
+            AND cgt.C02 IS NOT NULL  -- Only records with Email
+            AND UPPER(LTRIM(RTRIM(cgt.C03))) = 'REQUEST'  -- Only Request contact type
+    ) AS RankedContacts
+    WHERE RowNum = 1  -- Only the most recent Request contact per vendor
+)
+SELECT 
+    pl.LocationNo,
+    pl.Warehouse,
+    pl.Bin,
+    vlm.Vendor,  -- Vendor from VENDORLOCATION table (NULL = no vendor mapping, needs to be added)
+    vc.Email AS VendorEmail,  -- Email from VENDOR_CONTACTS table
+    vc.ContactType AS VendorContactType,  -- Type from VENDOR_CONTACTS table
+    pq.PartNo,
+    pn.Description AS PartDescription,
+    cc.Description AS Configuration,
+    pq.AvailableQty,
+    pq.PalletBoxNo,
+    pq.LotNo,
+    pq.CreateDate AS QtyCreateDate,
+    pq.LastActivityDate AS QtyLastActivity
+FROM WeekDates wd
+CROSS JOIN Plus.pls.PartLocation pl
+INNER JOIN Plus.pls.PartQty pq ON pq.LocationID = pl.ID
+INNER JOIN Plus.pls.PartNo pn ON pn.PartNo = pq.PartNo
+INNER JOIN Plus.pls.CodeConfiguration cc ON cc.ID = pq.ConfigurationID
+-- LEFT JOIN ensures all parts show even if no vendor mapping exists (Vendor will be NULL)
+LEFT JOIN VendorLocationMapping vlm ON vlm.LocationNo = pl.LocationNo
+-- LEFT JOIN vendor contacts on Vendor name (may have multiple contacts per vendor)
+-- NULL Email/ContactType = no contact info for this vendor (needs to be added)
+LEFT JOIN VendorContacts vc ON vc.Vendor = vlm.Vendor
+WHERE pl.ProgramID = 10068
+    AND pq.ProgramID = 10068
+    AND pl.LocationNo LIKE 'OEM%'
+    -- Filter for Monday to Friday of current week (inclusive of both days)
+    AND CAST(pq.CreateDate AS DATE) >= wd.WeekMonday
+    AND CAST(pq.CreateDate AS DATE) <= wd.WeekFriday
+ORDER BY pl.LocationNo, pq.PartNo, cc.Description;
