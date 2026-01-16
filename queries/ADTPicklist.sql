@@ -57,7 +57,11 @@ LEFT JOIN pls.PartQty pq ON pq.PartNo = sl.PartNo
 LEFT JOIN pls.PartLocation loc ON loc.ID = pq.LocationID
     AND loc.LocationNo LIKE 'FGI%'
     AND loc.StatusID = (SELECT ID FROM pls.CodeStatus WHERE Description = 'ACTIVE')
-    AND (loc.Bay LIKE '%Z%' OR loc.LocationNo LIKE 'FGI.ADT.Z%')  -- ✅ Include only Z locations (Bay contains Z or LocationNo like FGI.ADT.Z%)
+    AND (
+        loc.Bay LIKE '%Z%' 
+        OR loc.LocationNo LIKE 'FGI.ADT.Z%'  -- Z locations like FGI.ADT.ZD.04.06E
+        OR loc.LocationNo LIKE 'FGI.10068%'  -- ✅ Include FGI.10068 locations (like FGI.10068.0.0.0)
+    )
 LEFT JOIN Plus.pls.CodeAddressDetails cad ON cad.AddressID = sh.AddressID
     AND cad.AddressType = 'ShipTo'
 LEFT JOIN Plus.pls.SOShipmentInfo sos ON sos.SOHeaderID = sh.ID

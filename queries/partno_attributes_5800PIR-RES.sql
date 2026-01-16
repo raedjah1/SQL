@@ -19,3 +19,4 @@ WHERE pna.PartNo = '5800PIR-RES'
 ORDER BY ca.AttributeName, pna.CreateDate DESC;
 
 
+

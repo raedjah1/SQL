@@ -229,12 +229,12 @@ REQ-002     PART789         PART789            10    2025-01-08    REPLACEMENT_R
 
 ```
 SHIPPED → RECEIVED_BY_VENDOR → [Credit/Replacement Processing]
-                              │
-                              ├─→ CREDITED (END)
-                              │
-                              ├─→ REPLACEMENT_ISSUED → REPLACEMENT_RECEIVED (END)
-                              │
-                              └─→ PARTIAL_CREDIT_REPLACEMENT → REPLACEMENT_RECEIVED (END)
+                                                                                                  │
+                                                                                                  ├─→ CREDITED (END)
+                                                                                                  │
+                                                                                                  ├─→ REPLACEMENT_ISSUED → REPLACEMENT_RECEIVED (END)
+                                                                                                  │
+                                                                                                  └─→ PARTIAL_CREDIT_REPLACEMENT → REPLACEMENT_RECEIVED (END)
 ```
 
 ### 4.2 Status Definitions

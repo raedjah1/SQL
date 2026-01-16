@@ -13,6 +13,8 @@ SELECT
     t.TotalAttempts_Day,
     'Main Test' AS RecordType,
     t.TestResult,
+    CASE WHEN t.TestResult = 'PASS' THEN 1 ELSE 0 END AS PassFlag,
+    CASE WHEN t.TestResult = 'FAIL' THEN 1 ELSE 0 END AS FailFlag,
     t.StartTime_CDT,
     t.EndTime_CDT,
     t.TestDurationSeconds,
@@ -45,34 +47,41 @@ FROM (
             ELSE 'Middle'
         END AS AttemptType_Day
     FROM (
-        SELECT
-            dwr.ID AS TestID,
-            dwr.SerialNumber,
-            dwr.PartNumber,
-            dwr.MachineName,
+    SELECT 
+        dwr.ID AS TestID,
+        dwr.SerialNumber,
+        ISNULL(ps.PartNo, dwr.PartNumber) AS PartNumber,
+        dwr.MachineName,
             CASE WHEN dwr.MachineName = 'IDIAGS-MB-RESET' THEN 'MB-RESET' ELSE dwr.MachineName END AS MachineNameNormalized,
-            dwr.Result AS TestResult,
-            dwr.TestArea,
+        dwr.Result AS TestResult,
+        dwr.TestArea,
             dwr.CellNumber,
             dwr.OrderNumber,
             dwr.StartTime AS StartTime_CDT,
             dwr.EndTime AS EndTime_CDT,
             CAST(dwr.EndTime AS DATE) AS TestDate_CDT,
             DATEDIFF(SECOND, dwr.StartTime, dwr.EndTime) AS TestDurationSeconds
-        FROM [redw].[tia].[DataWipeResult] AS dwr
+    FROM [redw].[tia].[DataWipeResult] AS dwr
+    OUTER APPLY (
+        SELECT TOP 1 ps.PartNo
+        FROM Plus.pls.PartSerial ps
+        WHERE ps.SerialNo = dwr.SerialNumber
+          AND ps.ProgramID = 10053
+        ORDER BY ps.ID DESC
+    ) AS ps
         WHERE dwr.Contract = '10053'
-          AND dwr.TestArea = 'MEMPHIS'
+        AND dwr.TestArea = 'MEMPHIS'
           AND (dwr.MachineName = 'IDIAGS' OR dwr.MachineName = 'IDIAGS-MB-RESET')
     ) bt
 ) t
 
-UNION ALL
+    UNION ALL
 
 -- PART 2: Subtest rows (one per subtest)
-SELECT
+    SELECT 
     CAST(dwr.EndTime AS DATE) AS TestDate_CDT,
     dwr.SerialNumber,
-    dwr.PartNumber,
+    ISNULL(ps.PartNo, dwr.PartNumber) AS PartNumber,
     CASE WHEN dwr.MachineName = 'IDIAGS-MB-RESET' THEN 'MB-RESET' ELSE dwr.MachineName END AS MachineNameNormalized,
     -- Calculate AttemptType_Day for main test (needed for subtests too)
     CASE
@@ -98,6 +107,8 @@ SELECT
         CAST(dwr.EndTime AS DATE)) AS TotalAttempts_Day,
     'Subtest' AS RecordType,
     dwr.Result AS TestResult,
+    CASE WHEN dwr.Result = 'PASS' THEN 1 ELSE 0 END AS PassFlag,
+    CASE WHEN dwr.Result = 'FAIL' THEN 1 ELSE 0 END AS FailFlag,
     dwr.StartTime AS StartTime_CDT,
     dwr.EndTime AS EndTime_CDT,
     DATEDIFF(SECOND, dwr.StartTime, dwr.EndTime) AS TestDurationSeconds,
@@ -114,6 +125,13 @@ SELECT
     dwr.OrderNumber
 FROM [redw].[tia].[DataWipeResult] AS dwr
 INNER JOIN [redw].[tia].[SubTestLogs] AS stl ON stl.MainTestID = dwr.ID
+OUTER APPLY (
+    SELECT TOP 1 ps.PartNo
+    FROM Plus.pls.PartSerial ps
+    WHERE ps.SerialNo = dwr.SerialNumber
+      AND ps.ProgramID = 10053
+    ORDER BY ps.ID DESC
+) AS ps
 WHERE dwr.Contract = '10053'
   AND dwr.TestArea = 'MEMPHIS'
   AND (dwr.MachineName = 'IDIAGS' OR dwr.MachineName = 'IDIAGS-MB-RESET')

@@ -237,3 +237,4 @@ INNER JOIN (
     AND loc_info.rn = 1;  -- Get most recent transaction
 
 
+
