@@ -1,27 +1,26 @@
 -- Inventory Query for ProgramID 10053 using base tables (not views)
--- Combines PartQty (non-serialized) and PartSerial (serialized) inventory
+-- Uses PartQty as base (like partinventory.sql) and LEFT JOINs PartSerial to get serial numbers
 -- Base tables used:
 --   - Plus.pls.PartQty (quantities)
---   - Plus.pls.PartSerial (serialized units)
+--   - Plus.pls.PartSerial (serialized units - for serial numbers only)
 --   - Plus.pls.PartLocation (location details)
 --   - Plus.pls.CodeStatus (status descriptions)
 --   - Plus.pls.CodeLocationGroup (location group descriptions)
 --   - Plus.pls.CodeConfiguration (configuration descriptions)
 --   - Plus.pls.PartNo (part descriptions)
---   - Plus.pls.PartNoAttribute (commodity attributes)
---   - Plus.pls.CodeAttribute (attribute definitions)
+--   - Plus.pls.CodeCommodity (commodity descriptions)
 --   - Plus.pls.[User] (usernames)
 
--- PartQty records (non-serialized inventory)
 SELECT 
     pq.PartNo,
     pq.AvailableQty,
     pl.LocationNo AS Location,
-    NULL AS SerialNumber,  -- PartQty doesn't have serial numbers
+    ps.SerialNo AS SerialNumber,  -- Get one serial number from PartSerial if it exists
     cc.Description AS Configuration,
-    pna_primary.Value AS PrimaryCommodity,
-    pna_secondary.Value AS SecondaryCommodity,
+    pcc.Description AS PrimaryCommodity,
+    scc.Description AS SecondaryCommodity,
     pn.Description,
+    CASE WHEN pn.SerialFlag = 0 THEN 'N' ELSE 'Y' END AS SerialFlag,
     clg.Description AS LocationGroup,
     pl.ID AS LocationID,
     pl.Warehouse,
@@ -29,61 +28,27 @@ SELECT
     u.Username,
     pq.LastActivityDate,
     pq.CreateDate,
-    DATEDIFF(DAY, pq.CreateDate, GETDATE()) AS Aging
+    DATEDIFF(DAY, pq.LastActivityDate, GETDATE()) AS Aging
 FROM Plus.pls.PartQty pq
 INNER JOIN Plus.pls.PartLocation pl ON pl.ID = pq.LocationID
 INNER JOIN Plus.pls.CodeStatus cs ON cs.ID = pl.StatusID
 INNER JOIN Plus.pls.CodeLocationGroup clg ON clg.ID = pl.LocationGroupID
 LEFT JOIN Plus.pls.CodeConfiguration cc ON cc.ID = pq.ConfigurationID
-LEFT JOIN Plus.pls.PartNo pn ON pn.PartNo = pq.PartNo
+INNER JOIN Plus.pls.PartNo pn ON pn.PartNo = pq.PartNo
 LEFT JOIN Plus.pls.[User] u ON u.ID = pq.UserID
--- PrimaryCommodity attribute
-LEFT JOIN Plus.pls.PartNoAttribute pna_primary ON pna_primary.PartNo = pq.PartNo
-    AND pna_primary.ProgramID = 10053
-    AND pna_primary.AttributeID = (SELECT ID FROM Plus.pls.CodeAttribute WHERE AttributeName = 'PrimaryCommodity')
--- SecondaryCommodity attribute
-LEFT JOIN Plus.pls.PartNoAttribute pna_secondary ON pna_secondary.PartNo = pq.PartNo
-    AND pna_secondary.ProgramID = 10053
-    AND pna_secondary.AttributeID = (SELECT ID FROM Plus.pls.CodeAttribute WHERE AttributeName = 'SecondaryCommodity')
+LEFT JOIN Plus.pls.CodeCommodity pcc ON pcc.ID = pn.PrimaryCommodityID
+LEFT JOIN Plus.pls.CodeCommodity scc ON scc.ID = pn.SecondaryCommodityID
+-- Get one serial number from PartSerial if it exists (using OUTER APPLY to avoid row multiplication)
+OUTER APPLY (
+    SELECT TOP 1 ps.SerialNo
+    FROM Plus.pls.PartSerial ps
+    WHERE ps.PartNo = pq.PartNo 
+        AND ps.LocationID = pq.LocationID 
+        AND ps.ProgramID = 10053
+    ORDER BY ps.SerialNo
+) ps
 WHERE pq.ProgramID = 10053
   AND pq.AvailableQty > 0
-
-UNION ALL
-
--- PartSerial records (serialized inventory)
-SELECT 
-    ps.PartNo,
-    1 AS AvailableQty,  -- Each serial is 1 unit
-    pl.LocationNo AS Location,
-    ps.SerialNo AS SerialNumber,
-    cc.Description AS Configuration,
-    pna_primary.Value AS PrimaryCommodity,
-    pna_secondary.Value AS SecondaryCommodity,
-    pn.Description,
-    clg.Description AS LocationGroup,
-    pl.ID AS LocationID,
-    pl.Warehouse,
-    pl.Bin,
-    u.Username,
-    ps.LastActivityDate,
-    ps.CreateDate,
-    DATEDIFF(DAY, ps.CreateDate, GETDATE()) AS Aging
-FROM Plus.pls.PartSerial ps
-INNER JOIN Plus.pls.PartLocation pl ON pl.ID = ps.LocationID
-INNER JOIN Plus.pls.CodeStatus cs ON cs.ID = ps.StatusID
-INNER JOIN Plus.pls.CodeLocationGroup clg ON clg.ID = pl.LocationGroupID
-LEFT JOIN Plus.pls.CodeConfiguration cc ON cc.ID = ps.ConfigurationID
-LEFT JOIN Plus.pls.PartNo pn ON pn.PartNo = ps.PartNo
-LEFT JOIN Plus.pls.[User] u ON u.ID = ps.UserID
--- PrimaryCommodity attribute
-LEFT JOIN Plus.pls.PartNoAttribute pna_primary ON pna_primary.PartNo = ps.PartNo
-    AND pna_primary.ProgramID = 10053
-    AND pna_primary.AttributeID = (SELECT ID FROM Plus.pls.CodeAttribute WHERE AttributeName = 'PrimaryCommodity')
--- SecondaryCommodity attribute
-LEFT JOIN Plus.pls.PartNoAttribute pna_secondary ON pna_secondary.PartNo = ps.PartNo
-    AND pna_secondary.ProgramID = 10053
-    AND pna_secondary.AttributeID = (SELECT ID FROM Plus.pls.CodeAttribute WHERE AttributeName = 'SecondaryCommodity')
-WHERE ps.ProgramID = 10053
 
 ORDER BY PartNo, Location, SerialNumber;
 

@@ -11,15 +11,7 @@ SELECT
         WHEN ISNUMERIC(pna.Value) = 1 THEN CAST(pna.Value AS DECIMAL(10,2))
         ELSE 0
     END AS Standard_Cost,
-    ps.PalletBoxNo,
-    CASE 
-        WHEN MAX(CASE WHEN ca.AttributeName = 'TrckObjAttLOB' THEN psa.Value END) = 'POWER' THEN 'Server'
-        ELSE 'Not Server'
-    END AS Server_Classification,
-    CASE 
-        WHEN pl.LocationNo LIKE 'RESERVE%' THEN 'Reserve'
-        ELSE 'Other'
-    END AS Location_Category
+    ps.PalletBoxNo
 FROM pls.PartSerial ps
 LEFT JOIN pls.PartLocation pl ON pl.ID = ps.LocationID
 LEFT JOIN pls.PartSerialAttribute psa ON ps.ID = psa.PartSerialID 
@@ -37,3 +29,4 @@ GROUP BY
     ps.LastActivityDate,
     pna.Value,
     ps.PalletBoxNo
+

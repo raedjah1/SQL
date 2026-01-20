@@ -12,8 +12,22 @@ SELECT
     -- Part Number2
     sl.PartNo AS PartNumber2,
     
-    -- From Loc w/ on Hand Qty (FGI locations where parts are picked FROM)
-    MAX(loc.LocationNo + ' - [' + CAST(pq.AvailableQty AS VARCHAR) + ']') AS FromLoc_w_OnHandQty,
+    -- From Loc w/ on Hand Qty (FGI locations where parts are picked FROM) - All locations in FIFO order
+    (SELECT STRING_AGG(
+        loc_sub.LocationNo + ' [' + CAST(pq_sub.AvailableQty AS VARCHAR) + ']', 
+        ' | '
+    ) WITHIN GROUP (ORDER BY pq_sub.CreateDate ASC, pq_sub.LastActivityDate ASC)
+     FROM pls.PartQty pq_sub
+     INNER JOIN pls.PartLocation loc_sub ON loc_sub.ID = pq_sub.LocationID
+     WHERE pq_sub.PartNo = sl.PartNo
+       AND pq_sub.ProgramID = 10068
+       AND pq_sub.AvailableQty > 0
+       AND loc_sub.LocationNo LIKE 'FGI%'
+       AND loc_sub.StatusID = (SELECT ID FROM pls.CodeStatus WHERE Description = 'ACTIVE')
+       AND (loc_sub.Bay LIKE '%Z%' 
+            OR loc_sub.LocationNo LIKE 'FGI.ADT.Z%'
+            OR loc_sub.LocationNo = 'FGI.ADT.PIC.CAR.01')
+    ) AS FromLoc_w_OnHandQty,
     
     -- To Location (from CodeAddressDetails - actual location name)
     ISNULL(cad.Name, CAST(sh.AddressID AS VARCHAR)) AS ToLocation,
@@ -51,17 +65,6 @@ LEFT JOIN pls.CodeAttribute cla ON cla.ID = sla.AttributeID AND cla.AttributeNam
 LEFT JOIN pls.PartSerial ps ON ps.SOHeaderID = sh.ID 
     AND ps.PartNo = sl.PartNo 
     AND ps.ProgramID = 10068
-LEFT JOIN pls.PartQty pq ON pq.PartNo = sl.PartNo 
-    AND pq.ProgramID = 10068
-    AND pq.AvailableQty > 0
-LEFT JOIN pls.PartLocation loc ON loc.ID = pq.LocationID
-    AND loc.LocationNo LIKE 'FGI%'
-    AND loc.StatusID = (SELECT ID FROM pls.CodeStatus WHERE Description = 'ACTIVE')
-    AND (
-        loc.Bay LIKE '%Z%' 
-        OR loc.LocationNo LIKE 'FGI.ADT.Z%'  -- Z locations like FGI.ADT.ZD.04.06E
-        OR loc.LocationNo LIKE 'FGI.10068%'  -- ✅ Include FGI.10068 locations (like FGI.10068.0.0.0)
-    )
 LEFT JOIN Plus.pls.CodeAddressDetails cad ON cad.AddressID = sh.AddressID
     AND cad.AddressType = 'ShipTo'
 LEFT JOIN Plus.pls.SOShipmentInfo sos ON sos.SOHeaderID = sh.ID
