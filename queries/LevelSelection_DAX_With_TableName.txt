@@ -1,0 +1,17 @@
+-- Calculated Column for "vPartSerial ( Without Raw/Reserve)" table
+-- Right-click table → New Column
+-- Name: "Selected Level"
+
+Selected Level = 
+VAR SelectedColumn = SELECTEDVALUE(LevelSelection[ColumnName])
+RETURN
+    SWITCH(
+        SelectedColumn,
+        "High_Level", 'vPartSerial ( Without Raw/Reserve)'[High_Level],
+        "Mid_Level", 'vPartSerial ( Without Raw/Reserve)'[Mid_Level],
+        "W_Level", 'vPartSerial ( Without Raw/Reserve)'[W_Level],
+        'vPartSerial ( Without Raw/Reserve)'[High_Level]
+    )
+
+
+

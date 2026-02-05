@@ -21,3 +21,10 @@ WHERE loc.LocationNo = 'FGI.10068.0.0.0'
   AND pq.ProgramID = 10068
 ORDER BY pq.AvailableQty DESC, pq.PartNo;
 
+
+
+
+
+
+
+

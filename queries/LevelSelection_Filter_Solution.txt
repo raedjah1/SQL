@@ -1,0 +1,46 @@
+-- Power BI Solution for Filtering Visual by Selected Level
+
+-- OPTION 1: Calculated Column (Recommended for Bar Chart Axis)
+-- Create this as a New Column in your main table
+
+Selected Level Column = 
+VAR SelectedColumn = SELECTEDVALUE(LevelSelection[ColumnName])
+RETURN
+    SWITCH(
+        SelectedColumn,
+        "High_Level", 'YourTableName'[High_Level],
+        "Mid_Level", 'YourTableName'[Mid_Level],
+        "W_Level", 'YourTableName'[W_Level],
+        'YourTableName'[High_Level]  // Default
+    )
+
+-- Then use this column on the X-axis of your bar chart
+-- The chart will automatically filter/group by the selected level
+
+
+-- OPTION 2: Measure for Count (if you need counts)
+Selected Level Count = 
+VAR SelectedColumn = SELECTEDVALUE(LevelSelection[ColumnName])
+RETURN
+    SWITCH(
+        SelectedColumn,
+        "High_Level", 
+            CALCULATE(
+                COUNTROWS('YourTableName'),
+                ALLEXCEPT('YourTableName', 'YourTableName'[High_Level])
+            ),
+        "Mid_Level",
+            CALCULATE(
+                COUNTROWS('YourTableName'),
+                ALLEXCEPT('YourTableName', 'YourTableName'[Mid_Level])
+            ),
+        "W_Level",
+            CALCULATE(
+                COUNTROWS('YourTableName'),
+                ALLEXCEPT('YourTableName', 'YourTableName'[W_Level])
+            ),
+        COUNTROWS('YourTableName')
+    )
+
+
+

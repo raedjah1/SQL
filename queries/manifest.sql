@@ -1,10 +1,20 @@
 
+
 SELECT 
     -- FEDEX MANIFEST DATA
     fm.C01 as TrackingNumber,
     CAST(fm.C02 AS DATE) as EntryDate,
     fm.CreateDate as ManifestUploadDate,
     fm.ID as ManifestID,
+    
+    -- PROGRAM ID
+    COALESCE(dl.ProgramID, pt.ProgramID) AS ProgramID,
+    CASE 
+        WHEN dl.ProgramID IS NOT NULL AND pt.ProgramID IS NOT NULL AND dl.ProgramID != pt.ProgramID THEN 'MISMATCH'
+        WHEN dl.ProgramID IS NOT NULL THEN 'From DockLog'
+        WHEN pt.ProgramID IS NOT NULL THEN 'From Transaction'
+        ELSE 'Unknown - No DockLog or Transaction'
+    END AS ProgramIDSource,
     
     -- DOCK LOG DATA  
     dl.ID as DockLogID,

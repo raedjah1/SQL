@@ -1,0 +1,39 @@
+-- CORRECT SOLUTION: Calculated Column with proper syntax
+-- The issue is we need to reference the slicer selection differently
+-- Create this as a NEW COLUMN in 'vPartSerial ( Without Raw/Reserve)' table
+
+Selected Level = 
+VAR SelectedColumn = SELECTEDVALUE(LevelSelection[ColumnName])
+RETURN
+    IF(
+        SelectedColumn = "High_Level", 'vPartSerial ( Without Raw/Reserve)'[High_Level],
+        IF(
+            SelectedColumn = "Mid_Level", 'vPartSerial ( Without Raw/Reserve)'[Mid_Level],
+            IF(
+                SelectedColumn = "W_Level", 'vPartSerial ( Without Raw/Reserve)'[W_Level],
+                'vPartSerial ( Without Raw/Reserve)'[High_Level]
+            )
+        )
+    )
+
+
+-- EVEN BETTER: Use LOOKUPVALUE to get the selected column name
+-- This avoids the SELECTEDVALUE issue in calculated columns
+
+Selected Level = 
+VAR SelectedColumn = LOOKUPVALUE(
+    LevelSelection[ColumnName],
+    LevelSelection[Level],
+    SELECTEDVALUE(LevelSelection[Level], "High_Level")
+)
+RETURN
+    SWITCH(
+        SelectedColumn,
+        "High_Level", 'vPartSerial ( Without Raw/Reserve)'[High_Level],
+        "Mid_Level", 'vPartSerial ( Without Raw/Reserve)'[Mid_Level],
+        "W_Level", 'vPartSerial ( Without Raw/Reserve)'[W_Level],
+        'vPartSerial ( Without Raw/Reserve)'[High_Level]
+    )
+
+
+

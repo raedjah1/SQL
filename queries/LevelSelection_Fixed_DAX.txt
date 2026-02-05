@@ -1,0 +1,71 @@
+-- SOLUTION: Use a Measure instead of a Calculated Column
+-- Create this as a MEASURE (not a column) in your table
+
+Selected Level Value = 
+VAR SelectedColumn = SELECTEDVALUE(LevelSelection[ColumnName])
+VAR CurrentRow = SELECTEDVALUE('vPartSerial ( Without Raw/Reserve)'[ID])  // Use a unique identifier
+RETURN
+    SWITCH(
+        SelectedColumn,
+        "High_Level", 
+            CALCULATE(
+                SELECTEDVALUE('vPartSerial ( Without Raw/Reserve)'[High_Level]),
+                FILTER(
+                    'vPartSerial ( Without Raw/Reserve)',
+                    'vPartSerial ( Without Raw/Reserve)'[ID] = CurrentRow
+                )
+            ),
+        "Mid_Level",
+            CALCULATE(
+                SELECTEDVALUE('vPartSerial ( Without Raw/Reserve)'[Mid_Level]),
+                FILTER(
+                    'vPartSerial ( Without Raw/Reserve)',
+                    'vPartSerial ( Without Raw/Reserve)'[ID] = CurrentRow
+                )
+            ),
+        "W_Level",
+            CALCULATE(
+                SELECTEDVALUE('vPartSerial ( Without Raw/Reserve)'[W_Level]),
+                FILTER(
+                    'vPartSerial ( Without Raw/Reserve)',
+                    'vPartSerial ( Without Raw/Reserve)'[ID] = CurrentRow
+                )
+            ),
+        SELECTEDVALUE('vPartSerial ( Without Raw/Reserve)'[High_Level])
+    )
+
+
+-- BUT WAIT - Measures can't be used on axes directly!
+-- Better solution: Use TREATAS or create a dynamic table
+
+-- ALTERNATIVE SOLUTION: Create a Calculated Table that switches based on selection
+-- This creates a dynamic table you can use on the axis
+
+Selected Level Table = 
+VAR SelectedColumn = SELECTEDVALUE(LevelSelection[ColumnName])
+RETURN
+    SWITCH(
+        SelectedColumn,
+        "High_Level", 
+            SUMMARIZE(
+                'vPartSerial ( Without Raw/Reserve)',
+                'vPartSerial ( Without Raw/Reserve)'[High_Level]
+            ),
+        "Mid_Level",
+            SUMMARIZE(
+                'vPartSerial ( Without Raw/Reserve)',
+                'vPartSerial ( Without Raw/Reserve)'[Mid_Level]
+            ),
+        "W_Level",
+            SUMMARIZE(
+                'vPartSerial ( Without Raw/Reserve)',
+                'vPartSerial ( Without Raw/Reserve)'[W_Level]
+            ),
+        SUMMARIZE(
+            'vPartSerial ( Without Raw/Reserve)',
+            'vPartSerial ( Without Raw/Reserve)'[High_Level]
+        )
+    )
+
+
+

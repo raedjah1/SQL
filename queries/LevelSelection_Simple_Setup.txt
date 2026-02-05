@@ -1,0 +1,31 @@
+-- STEP 1: Create Calculated Column in Your Main Table
+-- Go to your main table (the one with High_Level, Mid_Level, W_Level columns)
+-- Right-click table → New Column
+-- Name it: "Selected Level"
+-- Paste this DAX (replace 'YourTableName' with your actual table name):
+
+Selected Level = 
+VAR SelectedColumn = SELECTEDVALUE(LevelSelection[ColumnName])
+RETURN
+    SWITCH(
+        SelectedColumn,
+        "High_Level", 'YourTableName'[High_Level],
+        "Mid_Level", 'YourTableName'[Mid_Level],
+        "W_Level", 'YourTableName'[W_Level],
+        'YourTableName'[High_Level]
+    )
+
+
+-- STEP 2: In Power BI Report View
+-- 1. Insert → Slicer
+-- 2. Drag LevelSelection[Level] to the slicer
+--    (This gives you 3 options: "High Level", "Mid Level", "Low Level")
+-- 3. Format slicer as Dropdown or Buttons (your choice)
+
+-- STEP 3: In Your Bar Chart
+-- X-axis: Use "Selected Level" column (the calculated column you just created)
+-- Y-axis: Use your count/measure
+-- The chart will automatically filter based on slicer selection!
+
+
+

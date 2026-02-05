@@ -13,3 +13,10 @@ LEFT JOIN Plus.pls.[User] u ON u.ID = pna.UserID
 WHERE pna.PartNo = '60-362N-10'
 ORDER BY ca.AttributeName;
 
+
+
+
+
+
+
+

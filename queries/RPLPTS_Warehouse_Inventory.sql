@@ -25,3 +25,10 @@ WHERE pq.ProgramID = 10068
   AND pl.Warehouse = 'RPLPTS'
 ORDER BY pq.PartNo, pl.LocationNo;
 
+
+
+
+
+
+
+

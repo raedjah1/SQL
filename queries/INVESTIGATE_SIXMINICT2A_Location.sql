@@ -136,3 +136,10 @@ WHERE pq.PartNo IN ('76724', 'SIXMINICT2A')
   AND pq.AvailableQty > 0
 ORDER BY pq.PartNo, pq.AvailableQty DESC;
 
+
+
+
+
+
+
+

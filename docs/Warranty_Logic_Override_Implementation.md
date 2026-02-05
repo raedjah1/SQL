@@ -153,3 +153,8 @@ WHERE psa.PartSerialID = @PartSerialID
 3. **Generic Data Table:** The matching logic in the generic data table should work the same way regardless of whether the identifier comes from override or part-level
 4. **Performance:** Consider caching the attribute lookup to avoid repeated queries during receiving operations
 
+
+
+
+
+

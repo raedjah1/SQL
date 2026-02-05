@@ -1,0 +1,43 @@
+-- WORKING SOLUTION: Use a Measure with TREATAS
+-- This creates a dynamic filter relationship
+
+-- Step 1: Create this MEASURE (not column)
+Selected Level Filter = 
+VAR SelectedColumn = SELECTEDVALUE(LevelSelection[ColumnName])
+VAR LevelValues = 
+    SWITCH(
+        SelectedColumn,
+        "High_Level", VALUES('vPartSerial ( Without Raw/Reserve)'[High_Level]),
+        "Mid_Level", VALUES('vPartSerial ( Without Raw/Reserve)'[Mid_Level]),
+        "W_Level", VALUES('vPartSerial ( Without Raw/Reserve)'[W_Level]),
+        VALUES('vPartSerial ( Without Raw/Reserve)'[High_Level])
+    )
+RETURN
+    COUNTROWS(LevelValues)
+
+
+-- ACTUALLY, THE SIMPLEST SOLUTION:
+-- Use the actual level columns directly and filter them with TREATAS
+-- OR use bookmarks to show/hide different visuals
+
+-- BEST PRACTICE SOLUTION: Create 3 separate bar charts, one for each level
+-- Then use bookmarks to show/hide them based on slicer selection
+-- This is the most reliable approach in Power BI
+
+-- OR: Use this calculated column (it will default to High_Level, but slicer won't change it dynamically):
+Selected Level = 'vPartSerial ( Without Raw/Reserve)'[High_Level]
+
+-- Then in your visual, add a visual-level filter using a measure:
+Level Filter Measure = 
+VAR SelectedColumn = SELECTEDVALUE(LevelSelection[ColumnName])
+RETURN
+    SWITCH(
+        SelectedColumn,
+        "High_Level", SELECTEDVALUE('vPartSerial ( Without Raw/Reserve)'[High_Level]),
+        "Mid_Level", SELECTEDVALUE('vPartSerial ( Without Raw/Reserve)'[Mid_Level]),
+        "W_Level", SELECTEDVALUE('vPartSerial ( Without Raw/Reserve)'[W_Level]),
+        BLANK()
+    )
+
+
+

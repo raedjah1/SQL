@@ -1,180 +1,157 @@
-CREATE OR ALTER     VIEW rpt.ADTExcessCentralizationReport AS
+CREATE OR ALTER         VIEW rpt.ADTECRDashboard AS
 SELECT 
-    -- Organization - DYNAMIC from BRANCHES (just the code)
-    ISNULL(branch.BranchCode, 'Unknown') AS [Organization],
-    
-    -- Category field based on CustomerReference prefix
-    CASE 
-        WHEN ro.CustomerReference LIKE 'EX%' THEN 'Excess Centralization'
-        WHEN ro.CustomerReference LIKE 'SP%' THEN 'Special Projects'
-        ELSE 'Other'
-    END AS [Category],
-    
-    -- Subinventory Code
-    '160EX009' AS [Subinventory_Code],
-    
-    -- Item Details
-    pn.Description AS [Item_Description],
-    rol.PartNo AS [Item_No],
-    
-    -- Quantities
-    rol.QtyToReceive AS [Qty_to_Return],
-    rol.QtyReceived AS [Qty_Actually_Returned],
-    (rol.QtyToReceive - rol.QtyReceived) AS [Delta],
-    
-    -- Cost Data with Dollar Signs
-    '$' + CAST(
-        CASE 
-            WHEN ISNUMERIC(pna.Value) = 1 THEN CAST(pna.Value AS DECIMAL(10,2))
-            ELSE 0.00
-        END AS VARCHAR(20)
-    ) AS [Item_Cost],
-    
-    '$' + CAST(
-        CASE 
-            WHEN ISNUMERIC(pna.Value) = 1 THEN CAST(pna.Value AS DECIMAL(10,2)) * rol.QtyToReceive
-            ELSE 0.00
-        END AS VARCHAR(20)
-    ) AS [Ext_Cost],
-    
-    '$' + CAST(
-        CASE 
-            WHEN ISNUMERIC(pna.Value) = 1 THEN CAST(pna.Value AS DECIMAL(10,2)) * rol.QtyReceived
-            ELSE 0.00
-        END AS VARCHAR(20)
-    ) AS [Returned_Ext_Cost],
-    
-    -- SCRAP Data
-    ISNULL(scrap.ScrapQty, 0) AS [SCRAP],
-    '$' + CAST(ISNULL(scrap.ScrapExtCost, 0.00) AS VARCHAR(20)) AS [SCRAP_EXT_COST],
-    
-    -- INBOUND_GOOD = Anything not scrapped
-    (rol.QtyReceived - ISNULL(scrap.ScrapQty, 0)) AS [INBOUND_GOOD],
-    
-    -- TOTAL = INBOUND_GOOD + SCRAP
-    (rol.QtyReceived - ISNULL(scrap.ScrapQty, 0)) + ISNULL(scrap.ScrapQty, 0) AS [TOTAL],
-    
-    -- VARIANCE = Qty_to_Return - TOTAL
-    rol.QtyToReceive - ((rol.QtyReceived - ISNULL(scrap.ScrapQty, 0)) + ISNULL(scrap.ScrapQty, 0)) AS [VARIANCE],
-    
-    -- VARIANCE_EXT_COST = (Qty_to_Return - TOTAL) * Item_Cost
-    '$' + CAST(
-        (rol.QtyToReceive - ((rol.QtyReceived - ISNULL(scrap.ScrapQty, 0)) + ISNULL(scrap.ScrapQty, 0))) * 
-        CASE 
-            WHEN ISNUMERIC(pna.Value) = 1 THEN CAST(pna.Value AS DECIMAL(10,2))
-            ELSE 0.00
-        END AS VARCHAR(20)
-    ) AS [VARIANCE_EXT_COST],
-    
-    -- Status and Configuration
-    cs.Description AS [Status],
-    cc.Description AS [Configuration], 
-    
-    -- EX Reference
-    ro.CustomerReference AS [EX_Reference],
-    ro.CreateDate AS [EX_Created],
-    u.Username AS [Operator],
-    
-    -- RECEIVED DATE
-    received.ReceivedDate AS [Received_Date],
-    
-    -- Attribute Data - Extract only Box#1 part
-    CASE 
-        WHEN box_info.Value IS NOT NULL 
-        THEN SUBSTRING(box_info.Value, 1, CHARINDEX('-', box_info.Value) - 1)
-        ELSE ''
-    END AS [Box_Number],
-    
-    -- FedEx Tracking
-    tracking.TrackingNo AS [FedEx_Tracking],
-    tracking.CarrierName AS [Carrier],
-    
-    '' AS [Notes]
-    
-FROM [PLUS].pls.ROHeader ro
-JOIN [PLUS].pls.ROLine rol ON ro.ID = rol.ROHeaderID
-LEFT JOIN [PLUS].pls.PartNo pn ON rol.PartNo = pn.PartNo
-LEFT JOIN [PLUS].pls.PartNoAttribute pna ON rol.PartNo = pna.PartNo 
-    AND pna.AttributeID = (SELECT ID FROM [PLUS].pls.CodeAttribute WHERE AttributeName = 'Cost')
-    AND pna.ProgramID = 10068
-
-LEFT JOIN (
+    BusinessDaysFromOrderCreateToShip AS DaysFromOrderCreateToShip,
+    SOHeaderID,
+    OrderLineID,
+    CustomerReference,
+    ThirdPartyReference,
+    PartNo,
+    SerialNo,
+    QtyToShip AS Qty,
+    QtyReserved,
+    BizTalkID,
+    BackOrderFlag,
+    OrderCreateDate,
+    ShipDate,
+    HoursDifference,
+    CalendarDays,
+    COALESCE(Cost, 0) AS UnitCost,
+    COALESCE(Cost, 0) * QtyToShip AS TotalCost,
+    Status,
+    IsShipped,
+    TrackingNo,
+    LocationNo,
+    Category
+FROM (
     SELECT 
-        pt.CustomerReference,
-        pt.PartNo,
-        MIN(pt.CreateDate) as ReceivedDate
-    FROM [PLUS].pls.PartTransaction pt
-    INNER JOIN [PLUS].pls.CodePartTransaction cpt ON cpt.ID = pt.PartTransactionID
-    WHERE cpt.Description = 'RO-RECEIVE'
-      AND pt.ProgramID = 10068
-      AND (pt.CustomerReference LIKE 'EX%' OR pt.CustomerReference LIKE 'SP%')
-    GROUP BY pt.CustomerReference, pt.PartNo
-) received ON ro.CustomerReference = received.CustomerReference 
-    AND rol.PartNo = received.PartNo
-
--- SCRAP subquery - UPDATED to use ToLocation instead of transaction type
-LEFT JOIN (
-    SELECT
-        pt.PartNo,
-        pt.CustomerReference,
-        COUNT(*) AS [ScrapQty],
-        SUM(CASE
-            WHEN ISNUMERIC(pna2.Value) = 1 THEN CAST(pna2.Value AS DECIMAL(10,2))
-            ELSE 0.00
-        END) AS [ScrapExtCost]
-    FROM [PLUS].pls.PartTransaction pt
-    INNER JOIN [PLUS].pls.CodePartTransaction cpt ON cpt.ID = pt.PartTransactionID
-    LEFT JOIN [PLUS].pls.PartNoAttribute pna2 ON pt.PartNo = pna2.PartNo
-        AND pna2.AttributeID = (SELECT ID FROM [PLUS].pls.CodeAttribute WHERE AttributeName = 'Cost')
-        AND pna2.ProgramID = 10068
-    WHERE cpt.Description = 'RO-RECEIVE'
-      AND pt.ToLocation LIKE 'SCRAP%'  -- KEY CHANGE: Identify scrap by location
-      AND pt.ProgramID = 10068
-      AND (pt.CustomerReference LIKE 'EX%' OR pt.CustomerReference LIKE 'SP%')
-    GROUP BY pt.PartNo, pt.CustomerReference
-) scrap ON rol.PartNo = scrap.PartNo
-    AND ro.CustomerReference = scrap.CustomerReference
-
--- Box Number attribute
-LEFT JOIN (
-    SELECT 
-        [ROHeaderID],
-        [Value]
-    FROM [PLUS].pls.ROHeaderAttribute
-    WHERE [AttributeID] = (SELECT ID FROM [PLUS].pls.CodeAttribute WHERE AttributeName = 'ATTR01')
-) box_info ON ro.ID = box_info.ROHeaderID
-
--- FedEx Tracking
-LEFT JOIN (
-    SELECT 
-        [ROHeaderID],
-        [TrackingNo],
-        [CarrierName]
-    FROM [PLUS].pls.RODockLog
-    WHERE [ProgramID] = 10068
-) tracking ON ro.ID = tracking.ROHeaderID
-
--- Branch information from BRANCHES attribute
-LEFT JOIN (
-    SELECT 
-        cad.AddressID,
-        cada.Value AS BranchCode
-    FROM [PLUS].pls.CodeAddressDetails cad
-    LEFT JOIN [PLUS].pls.CodeAddressDetailsAttribute cada ON cad.ID = cada.AddressDetailID
-    LEFT JOIN [PLUS].pls.CodeAttribute ca ON cada.AttributeID = ca.ID
-    WHERE ca.AttributeName = 'BRANCHES'
-      AND cad.AddressType = 'ShipFrom'
-) branch ON ro.AddressID = branch.AddressID
-
--- Status lookup
-LEFT JOIN [PLUS].pls.CodeStatus cs ON rol.StatusID = cs.ID
-
--- Configuration lookup
-LEFT JOIN [PLUS].pls.CodeConfiguration cc ON rol.ConfigurationID = cc.ID
-
--- User lookup
-LEFT JOIN [PLUS].pls.[User] u ON rol.UserID = u.ID
-
-WHERE (ro.CustomerReference LIKE 'EX%' OR ro.CustomerReference LIKE 'SP%')
-  AND ro.ProgramID = 10068
-  AND cs.Description IN ('RECEIVED', 'PARTIALLYRECEIVED');
+        SOH.CreateDate AS OrderCreateDate,
+        -- Ship Date: Use actual ship transaction date if available, otherwise use SOHeader LastActivityDate if shipped status
+        CASE 
+            WHEN MAX(pt.CreateDate) IS NOT NULL THEN MAX(pt.CreateDate)
+            WHEN SOL.StatusID = 18 THEN SOH.LastActivityDate
+            ELSE NULL
+        END AS ShipDate,
+        SOL.QtyToShip,
+        SOL.QtyReserved,
+        SOL.BizTalkID,
+        SOL.PartNo,
+        MAX(pt.SerialNo) AS SerialNo,
+        SOH.ID AS SOHeaderID,
+        SOL.ID AS OrderLineID,
+        -- BackOrder Flag: Y if QtyToShip > QtyReserved, N otherwise
+        CASE 
+            WHEN (SOL.QtyToShip - SOL.QtyReserved) > 0 THEN 'Y'
+            ELSE 'N'
+        END AS BackOrderFlag,
+        SOH.CustomerReference,
+        SOH.ThirdPartyReference,
+        cost.Cost,
+        CS.Description AS Status,
+        CASE WHEN SOL.StatusID = 18 OR MAX(pt.CreateDate) IS NOT NULL THEN 1 ELSE 0 END AS IsShipped,
+        MAX(SOSI.TrackingNo) AS TrackingNo,
+        MAX(pl_location.LocationNo) AS LocationNo,
+        -- Category based on CustomerReference prefix
+        CASE 
+            WHEN SOH.CustomerReference LIKE '8%' THEN 'FWD'
+            WHEN SOH.CustomerReference LIKE 'SP%' THEN 'Special Projects'
+            ELSE 'Other'
+        END AS Category,
+        
+        -- Calculate actual hours difference (to ship date or current time if not shipped)
+        CASE 
+            WHEN MAX(pt.CreateDate) IS NOT NULL THEN DATEDIFF(HOUR, SOH.CreateDate, MAX(pt.CreateDate))
+            WHEN SOL.StatusID = 18 THEN DATEDIFF(HOUR, SOH.CreateDate, SOH.LastActivityDate)
+            ELSE DATEDIFF(HOUR, SOH.CreateDate, GETDATE()) -- Current time for unshipped orders
+        END AS HoursDifference,
+        
+        -- Calculate calendar days
+        CASE 
+            WHEN MAX(pt.CreateDate) IS NOT NULL THEN DATEDIFF(DAY, SOH.CreateDate, MAX(pt.CreateDate))
+            WHEN SOL.StatusID = 18 THEN DATEDIFF(DAY, SOH.CreateDate, SOH.LastActivityDate)
+            ELSE DATEDIFF(DAY, SOH.CreateDate, GETDATE()) -- Current date for unshipped orders
+        END AS CalendarDays,
+        
+        -- Calculate business days (excluding weekends, only if >= 24 total hours)
+        -- Business days = FULL business days that elapsed BETWEEN order and ship (not including start/end days)
+        -- Use DATEDIFF(MINUTE)/60.0 for accurate hour calculation (not hour boundaries)
+        CASE 
+            WHEN (
+                -- Check total hours first using minutes for accuracy
+                CASE 
+                    WHEN MAX(pt.CreateDate) IS NOT NULL THEN 
+                        DATEDIFF(MINUTE, SOH.CreateDate, MAX(pt.CreateDate)) / 60.0
+                    WHEN SOL.StatusID = 18 THEN 
+                        DATEDIFF(MINUTE, SOH.CreateDate, SOH.LastActivityDate) / 60.0
+                    ELSE 
+                        DATEDIFF(MINUTE, SOH.CreateDate, GETDATE()) / 60.0
+                END
+            ) < 24.0 THEN 0  -- Less than 24 total hours = 0 days
+            ELSE (
+                -- Count full business days IN BETWEEN (exclude start and end days)
+                CASE 
+                    WHEN MAX(pt.CreateDate) IS NOT NULL THEN 
+                        CASE WHEN (DATEDIFF(DAY, SOH.CreateDate, MAX(pt.CreateDate)) - 1 - (DATEDIFF(WEEK, SOH.CreateDate, MAX(pt.CreateDate)) * 2)) < 0 
+                             THEN 0 ELSE (DATEDIFF(DAY, SOH.CreateDate, MAX(pt.CreateDate)) - 1 - (DATEDIFF(WEEK, SOH.CreateDate, MAX(pt.CreateDate)) * 2)) END
+                    WHEN SOL.StatusID = 18 THEN 
+                        CASE WHEN (DATEDIFF(DAY, SOH.CreateDate, SOH.LastActivityDate) - 1 - (DATEDIFF(WEEK, SOH.CreateDate, SOH.LastActivityDate) * 2)) < 0 
+                             THEN 0 ELSE (DATEDIFF(DAY, SOH.CreateDate, SOH.LastActivityDate) - 1 - (DATEDIFF(WEEK, SOH.CreateDate, SOH.LastActivityDate) * 2)) END
+                    ELSE 
+                        CASE WHEN (DATEDIFF(DAY, SOH.CreateDate, GETDATE()) - 1 - (DATEDIFF(WEEK, SOH.CreateDate, GETDATE()) * 2)) < 0 
+                             THEN 0 ELSE (DATEDIFF(DAY, SOH.CreateDate, GETDATE()) - 1 - (DATEDIFF(WEEK, SOH.CreateDate, GETDATE()) * 2)) END
+                END
+            )
+        END AS BusinessDaysFromOrderCreateToShip
+    
+    FROM Plus.pls.SOHeader SOH
+    INNER JOIN Plus.pls.SOLine SOL ON SOL.SOHeaderID = SOH.ID
+    INNER JOIN Plus.pls.Program P ON P.ID = SOH.ProgramID
+    INNER JOIN Plus.pls.CodeStatus CS ON CS.ID = SOH.StatusID
+    INNER JOIN Plus.pls.[User] U ON U.ID = SOH.UserID
+    
+    -- LEFT JOIN to PartTransaction to get ship transactions (if they exist)
+    LEFT JOIN Plus.pls.PartTransaction pt ON pt.OrderLineID = SOL.ID 
+        AND pt.PartTransactionID = 18 -- SO-SHIP transaction type
+    
+    -- Get cost information
+    LEFT JOIN (
+        SELECT 
+            pna.PartNo,
+            MAX(CASE WHEN ISNUMERIC(pna.Value) = 1 THEN CAST(pna.Value AS DECIMAL(10,2)) ELSE NULL END) AS Cost
+        FROM Plus.pls.PartNoAttribute pna
+        INNER JOIN Plus.pls.CodeAttribute ca ON ca.ID = pna.AttributeID
+        WHERE ca.AttributeName = 'Cost'
+        GROUP BY pna.PartNo
+    ) cost ON cost.PartNo = SOL.PartNo
+    
+    -- Get tracking information
+    LEFT JOIN Plus.pls.SOShipmentInfo SOSI ON SOH.ID = SOSI.SOHeaderID
+    
+    -- Get location information
+    LEFT JOIN (
+        SELECT DISTINCT
+            sou.SOLineID,
+            pl.LocationNo
+        FROM Plus.pls.SOUnit sou
+        INNER JOIN Plus.pls.PartLocation pl ON pl.ID = sou.FromLocationID
+    ) pl_location ON pl_location.SOLineID = SOL.ID
+    
+    WHERE SOH.ProgramID IN (10068, 10072)
+      AND (
+          SOH.CustomerReference LIKE '8%' OR SOH.CustomerReference LIKE 'SP%'
+      )
+      AND CS.Description NOT LIKE '%CANCEL%'  -- Exclude canceled orders
+    GROUP BY 
+        SOH.ID,
+        SOL.ID,
+        SOH.CreateDate,
+        SOL.QtyToShip,
+        SOL.QtyReserved,
+        SOL.BizTalkID,
+        SOL.PartNo,
+        SOL.StatusID,
+        SOH.LastActivityDate,
+        SOH.CustomerReference,
+        SOH.ThirdPartyReference,
+        CS.Description,
+        cost.Cost
+) AS OrderData;

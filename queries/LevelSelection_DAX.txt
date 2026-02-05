@@ -1,0 +1,16 @@
+-- Power BI DAX Table Definition
+-- Create this as a New Table in Power BI
+
+LevelSelection = 
+DATATABLE(
+    "Level", STRING,
+    "ColumnName", STRING,
+    {
+        {"High Level", "High_Level"},
+        {"Mid Level", "Mid_Level"},
+        {"Low Level", "W_Level"}
+    }
+)
+
+
+
